@@ -1,0 +1,10 @@
+{
+    "name": "circle-bot",
+    "version": "1.1.0",
+    "description": "The Circle Bot",
+    "main": "bot.js",
+    "author": "Ksawery Chodyniecki",
+    "dependencies": {
+        "discord.js": "^12.5.1"
+    }
+}
