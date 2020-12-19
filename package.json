@@ -5,6 +5,10 @@
     "main": "bot.js",
     "author": "Ksawery Chodyniecki",
     "dependencies": {
-        "discord.js": "^12.5.1"
+        "discord.js": "^12.5.1",
+        "ytdl-core": "^4.2.1",
+        "ffmpeg-static": "^4.2.7",
+        "fluent-ffmpeg": "^2.1.2",
+        "@discordjs/opus": "^0.3.3"
     }
 }

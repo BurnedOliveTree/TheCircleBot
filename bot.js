@@ -1,6 +1,8 @@
 const Discord = require('discord.js');
+const ytdl = require("ytdl-core");
 const auth = require('./auth.json');
 const bot = new Discord.Client();
+const musicQueue = new Map();
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -23,6 +25,97 @@ const bot = new Discord.Client();
 //
 // channel.send(exampleEmbed);
 
+const musicHandle = {
+    execute: async function (message, serverQueue) {
+        const args = message.content.split(" ");
+        args.splice(0, 1)
+
+        const voiceChannel = message.member.voice.channel;
+        if (!voiceChannel)
+            return message.channel.send("You need to be in a voice channel to play music");
+        const permissions = voiceChannel.permissionsFor(message.client.user);
+        if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) {
+            return message.channel.send("I need the permissions to join and speak in your voice channel");
+        }
+
+        // works on a url
+        const songInfo = await ytdl.getInfo(args.join(" "));
+        const song = {
+            title: songInfo.videoDetails.title,
+            url: songInfo.videoDetails.video_url
+        };
+
+        if (!serverQueue) {
+            const queueConstruct = {
+                textChannel: message.channel,
+                voiceChannel: voiceChannel,
+                connection: null,
+                songs: [],
+                volume: 5,
+                playing: true
+            };
+
+            musicQueue.set(message.guild.id, queueConstruct);
+
+            queueConstruct.songs.push(song);
+
+            try {
+                queueConstruct.connection = await voiceChannel.join();
+                musicHandle.play(message.guild, queueConstruct.songs[0]);
+            } catch (err) {
+                console.log(err);
+                musicQueue.delete(message.guild.id);
+                return message.channel.send(err);
+            }
+        } else {
+            serverQueue.songs.push(song);
+            return message.channel.send(`${song.title} has been added to the queue`);
+        }
+    },
+
+    skip: function (message, serverQueue) {
+        if (!message.member.voice.channel)
+            return message.channel.send(
+                "You have to be in a voice channel to stop the music"
+            );
+        if (!serverQueue)
+            return message.channel.send("There is no song that I could skip");
+        serverQueue.connection.dispatcher.end();
+    },
+
+    stop: function (message, serverQueue) {
+        if (!message.member.voice.channel)
+            return message.channel.send(
+                "You have to be in a voice channel to stop the music"
+            );
+
+        if (!serverQueue)
+            return message.channel.send("There is no song that I could stop");
+
+        serverQueue.songs = [];
+        serverQueue.connection.dispatcher.end();
+    },
+
+    play: function (guild, song) {
+        const serverQueue = musicQueue.get(guild.id);
+        if (!song) {
+            serverQueue.voiceChannel.leave();
+            musicQueue.delete(guild.id);
+            return;
+        }
+
+        const dispatcher = serverQueue.connection
+            .play(ytdl(song.url))
+            .on("finish", () => {
+                serverQueue.songs.shift();
+                musicHandle.play(guild, serverQueue.songs[0]);
+            })
+            .on("error", error => console.error(error));
+        dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
+        serverQueue.textChannel.send(`Started playing: **${song.title}**`);
+    }
+};
+
 bot.on('message', async message => {
     // console.log(message.content)
     let args;
@@ -31,6 +124,8 @@ bot.on('message', async message => {
     if (message.content.substring(0, 1) === '!') {
         args = message.content.substring(1).split(' ');
         const cmd = args[0];
+
+        const serverQueue = musicQueue.get(message.guild.id);
 
         args = args.splice(1);
         switch(cmd) {
@@ -163,6 +258,18 @@ bot.on('message', async message => {
                 var interval = setInterval(function () {
                     message.channel.send("test").catch(console.error);
                 }, 60 * 1000); // every minute
+                break;
+            }
+            case 'play': {
+                await musicHandle.execute(message, serverQueue);
+                break;
+            }
+            case 'skip': {
+                musicHandle.skip(message, serverQueue);
+                break;
+            }
+            case 'stop': {
+                musicHandle.stop(message, serverQueue);
             }
         }
     }
@@ -195,6 +302,14 @@ bot.once('ready', () => {
             type: 'WATCHING'
         }
     });
+});
+
+bot.once('reconnecting', () => {
+    console.log('reconnecting...');
+});
+
+bot.once('disconnect', () => {
+    console.log('disconnected');
 });
 
 bot.login(auth.token);
