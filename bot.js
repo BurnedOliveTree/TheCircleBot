@@ -1,8 +1,11 @@
 const Discord = require('discord.js');
 const ytdl = require("ytdl-core");
+const YouTube = require("youtube-node");
 const auth = require('./auth.json');
 const bot = new Discord.Client();
 const musicQueue = new Map();
+let youtube = new YouTube();
+youtube.setKey(auth.googleKey);
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -27,8 +30,6 @@ const musicQueue = new Map();
 
 const musicHandle = {
     execute: async function (message, serverQueue) {
-        const args = message.content.split(" ");
-        args.splice(0, 1)
 
         const voiceChannel = message.member.voice.channel;
         if (!voiceChannel)
@@ -38,8 +39,25 @@ const musicHandle = {
             return message.channel.send("I need the permissions to join and speak in your voice channel");
         }
 
-        // works on a url
-        const songInfo = await ytdl.getInfo(args.join(" "));
+        // works on youtube
+        let args = message.content.split(" ");
+        args.splice(0, 1);
+        let query = args.join(" ");
+        let result = "";
+        if (query.indexOf("youtube.com/") === -1) {
+            let search = new Promise(
+                (resolve, reject) => {
+                    youtube.search(query, 2, function(error, result) {
+                        if (error) { reject(error); }
+                        resolve(result.items[0].id.videoId);
+                    })
+                }
+            );
+            result = await search;
+            query = "https://youtube.com/watch?v=".concat(result);
+        }
+
+        let songInfo = await ytdl.getInfo(query);
         const song = {
             title: songInfo.videoDetails.title,
             url: songInfo.videoDetails.video_url
