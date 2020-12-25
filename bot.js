@@ -1,9 +1,15 @@
 const Discord = require('discord.js');
 const ytdl = require("ytdl-core");
 const YouTube = require("youtube-node");
+const got = require('got');
+const jsdom = require("jsdom");
 const auth = require('./auth.json');
 const bot = new Discord.Client();
 const musicQueue = new Map();
+const { JSDOM } = jsdom;
+const url = 'http://www.holidayscalendar.com';
+// const url = 'https://www.checkiday.com';
+const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
 
@@ -134,6 +140,35 @@ const musicHandle = {
     }
 };
 
+async function getHolidays(url) {
+    try {
+        const response = await got(url);
+        const dom = new JSDOM(response.body);
+        return dom.window.document.querySelector('table').textContent;
+    } catch (error) {
+        console.log(error.response.body);
+    }
+}
+
+async function getHolidaysWrapper(url) {
+    return await getHolidays(url).then(result => {
+        let text = result;
+        text = text.split('    ').join('');
+        text = text.split('\n');
+        text = text.filter(function (elmnt) { return elmnt !== ''; });
+        text.shift(); text.shift(); text.shift();
+        text_size = text.length / 3;
+        let final_result = []
+        for (i = 0; i < text_size; i++) {
+            if (text[3*i+2] === 'Weird' || text[3*i+2] === 'Multiple Types') {
+                final_result.push(text[3*i])
+            }
+        }
+        text = final_result;
+        return text;
+    })
+}
+
 bot.on('message', async message => {
     // console.log(message.content)
     let args;
@@ -156,6 +191,7 @@ bot.on('message', async message => {
                         { name: 'ping', value: 'Ping bot' },
                         { name: 'roll', value: 'Rolls dices: arguments should be structured like this: 2d10+3' },
                         { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
+                        { name: 'holidays', value: "Shows today's international and weird holidays"},
                         { name: 'book', value: 'Sends the link to the ebook'}
                     )
                 await message.channel.send(embedHelp)
@@ -209,6 +245,19 @@ bot.on('message', async message => {
                     })
                 }
                 break;
+            case 'holidays': {
+                const holidays = await getHolidaysWrapper(url);
+                let date = new Date().toISOString().slice(0, 10).split('-');
+                date = date[2]+' '+months[parseInt(date[1])-1]+' '+date[0];
+                const embedHolidays = new Discord.MessageEmbed()
+                    .setTitle("Today's Holidays:")
+                    .setDescription(date)
+                holidays.forEach(entry => {
+                    embedHolidays.addField(entry, '\u200b');
+                });
+                await message.channel.send(embedHolidays)
+                break;
+            }
             case 'nick':
                 if (!message.guild.me.hasPermission('MANAGE_NICKNAMES'))
                     return message.channel.send('I don\'t have permission to change your nickname!');
