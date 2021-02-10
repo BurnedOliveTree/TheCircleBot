@@ -192,7 +192,10 @@ bot.on('message', async message => {
                         { name: 'roll', value: 'Rolls dices: arguments should be structured like this: 2d10+3' },
                         { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
                         { name: 'holidays', value: "Shows today's international and weird holidays"},
-                        { name: 'book', value: 'Sends the link to the ebook'}
+                        { name: 'book', value: 'Sends the link to the ebook'},
+                        { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
+                        { name: 'skip', value: 'Skips to next song in queue'},
+                        { name: 'stop', value: 'Stop playing music and leave the voice channel'}
                     )
                 await message.channel.send(embedHelp)
                 break;
@@ -350,7 +353,13 @@ bot.on('message', async message => {
     }
     if (message.content.substring(1, 7) === 'estem ') {
         args = message.content.substring(7).split(' ');
-        await message.channel.send('Witaj '+args.join(' ')+'! Ja jestem TheCircleBot :grin:!')
+        if (args[0].substring(1, 7) === "sawery" || args[0].substring(1, 5) === "dmin")
+            if (parseInt(message.author.id) !== auth.ksaweryID)
+                await message.channel.send('Witaj... Wait a minute, you are not Ksawery. You are not Ksawery at all!')
+            else
+                await message.channel.send('Witaj Ksawery :smiley:')
+        else
+            await message.channel.send('Witaj '+args.join(' ')+'! Ja jestem TheCircleBot :grin:!')
     }
     if (message.content.substring(1, 8) === 'ie zdam') {
         await message.channel.send('Oj tam, nie martw się, będzie dobrze :blush:')
