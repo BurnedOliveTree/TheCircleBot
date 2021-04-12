@@ -10,6 +10,8 @@ const { JSDOM } = jsdom;
 const url = 'http://www.holidayscalendar.com';
 // const url = 'https://www.checkiday.com';
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+var interval;
+let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
 
@@ -227,8 +229,19 @@ bot.on('message', async message => {
                     }
                 }
                 break;
+            case 'event':
+                if (args.length > 0) {
+                    const embedEvent = new Discord.MessageEmbed()
+                        .setTitle(args.join(' '))
+                        .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
+                    await message.channel.send(embedEvent).then(sent => {
+                        sent.react("🟢")
+                        sent.react("🟡")
+                        sent.react("🔴")
+                    })
+                }
+                break;
             case 'poll':
-                let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
                 if (args.length > 0) {
                     args = args.join(' ');
                     const options = args.split('\'').filter(i => i !== ' ').filter(i => i);
@@ -324,10 +337,18 @@ bot.on('message', async message => {
                 await message.channel.send("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly);
                 break;
             }
-            case 'loop': {
-                var interval = setInterval(function () {
-                    message.channel.send("test").catch(console.error);
-                }, 60 * 1000); // every minute
+            case 'fortnight': {
+                if (interval) {
+                    clearInterval(interval);
+                    interval = null;
+                }
+                else {
+                    interval = setInterval(function () {
+                        const embedNicks = new Discord.MessageEmbed()
+                            .setTitle("Co dwutygodniowa zmiana nicków!")
+                        message.channel.send(embedHolidays)
+                    }, 14 * 24 * 60 * 60 * 1000); // every fortnight
+                }
                 break;
             }
             case 'play': {
