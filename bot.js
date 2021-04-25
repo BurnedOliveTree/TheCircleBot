@@ -348,9 +348,9 @@ bot.on('message', async message => {
                 }
                 switch(args[0]) {
                     case 'start': {
-                        cron_arg = '* ' + args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5]
+                        cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6]
                         crons[args[1]] = cron.schedule(cron_arg, () => {
-                            message.channel.send(new Discord.MessageEmbed().setTitle(args.slice(6).join(' ')))
+                            message.channel.send(new Discord.MessageEmbed().setTitle(args.slice(7).join(' ')))
                         }, { timezone: 'Europe/Warsaw' });
                         break;
                     }
