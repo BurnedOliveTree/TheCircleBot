@@ -4,6 +4,7 @@ const YouTube = require("youtube-node");
 const got = require('got');
 const jsdom = require("jsdom");
 const auth = require('./auth.json');
+const cron = require('node-cron')
 const bot = new Discord.Client();
 const musicQueue = new Map();
 const { JSDOM } = jsdom;
@@ -14,6 +15,8 @@ var interval;
 let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
+
+crons = {}
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -195,6 +198,7 @@ bot.on('message', async message => {
                         { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
                         { name: 'holidays', value: "Shows today's international and weird holidays"},
                         { name: 'book', value: 'Sends the link to the ebook'},
+                        { name: 'cron', value: 'set up or remove a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days'},
                         { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
                         { name: 'skip', value: 'Skips to next song in queue'},
                         { name: 'stop', value: 'Stop playing music and leave the voice channel'}
@@ -337,17 +341,22 @@ bot.on('message', async message => {
                 await message.channel.send("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly);
                 break;
             }
-            case 'fortnight': {
-                if (interval) {
-                    clearInterval(interval);
-                    interval = null;
+            case 'cron': {
+                console.log(args);
+                if (args[0] != 'start' && !(ars[1] in crons)) {
+                    await message.channel.send('No such job as \"'+args[1]+'\"!')
                 }
-                else {
-                    interval = setInterval(function () {
-                        const embedNicks = new Discord.MessageEmbed()
-                            .setTitle("Co dwutygodniowa zmiana nicków!")
-                        message.channel.send(embedHolidays)
-                    }, 14 * 24 * 60 * 60 * 1000); // every fortnight
+                switch(args[0]) {
+                    case 'start': {
+                        cron_arg = '* ' + args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5]
+                        crons[args[1]] = cron.schedule(cron_arg, () => {
+                            message.channel.send(new Discord.MessageEmbed().setTitle(args.slice(6).join(' ')))
+                        }, { timezone: 'Europe/Warsaw' });
+                        break;
+                    }
+                    case 'kill': {
+                        crons[args[1]].stop();
+                    }
                 }
                 break;
             }
