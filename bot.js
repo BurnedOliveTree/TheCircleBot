@@ -351,11 +351,16 @@ bot.on('message', async message => {
                         cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6]
                         crons[args[1]] = cron.schedule(cron_arg, () => {
                             message.channel.send(new Discord.MessageEmbed().setTitle(args.slice(7).join(' ')))
-                        }, { timezone: 'Europe/Warsaw' });
+                        }, {
+                            timezone: 'Europe/Warsaw',
+                            scheduled: false
+                        });
+                        crons[args[1]].start();
                         break;
                     }
                     case 'kill': {
                         crons[args[1]].stop();
+                        delete(crons[args[1]])
                     }
                 }
                 break;
