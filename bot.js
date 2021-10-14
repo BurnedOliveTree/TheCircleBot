@@ -16,7 +16,7 @@ let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫',
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
 
-crons = {}
+let crons = {}
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -201,6 +201,7 @@ bot.on('message', async message => {
                         { name: 'cron', value: 'set up or remove a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days'},
                         { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
                         { name: 'skip', value: 'Skips to next song in queue'},
+                        { name: 'queue', value: 'Lists all songs added to the queue'},
                         { name: 'stop', value: 'Stop playing music and leave the voice channel'}
                     )
                 await message.channel.send(embedHelp)
@@ -343,7 +344,7 @@ bot.on('message', async message => {
             }
             case 'cron': {
                 console.log(args);
-                if (args[0] != 'start' && !(ars[1] in crons)) {
+                if (args[0] != 'start' && !(args[1] in crons)) {
                     await message.channel.send('No such job as \"'+args[1]+'\"!')
                 }
                 switch(args[0]) {
@@ -376,6 +377,12 @@ bot.on('message', async message => {
             case 'stop': {
                 musicHandle.stop(message, serverQueue);
             }
+            case 'queue':
+                const embedQueue = new Discord.MessageEmbed()
+                    .setTitle('Queue')
+                    .setDescription(serverQueue.songs)
+                await message.channel.send(embedQueue)
+                break;
         }
     }
     // the messages replies
