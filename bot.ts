@@ -1,7 +1,7 @@
-import Discord, { Awaitable, Client, Intents, Message } from 'discord.js';
+import { Awaitable, CommandInteraction, Intents, Message, MessageEmbed } from 'discord.js';
 import ytdl from "ytdl-core";
 import got from 'got';
-import { resolveIGuild } from 'discordx';
+import { Client, Discord, Slash, resolveIGuild, SlashOption } from 'discordx';
 import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
 const YouTube = require("youtube-node");
 const jsdom = require("jsdom");
@@ -187,6 +187,55 @@ async function getHolidaysWrapper(url: string) {
     })
 }
 
+// slash commands
+
+@Discord()
+abstract class TheCircleBot {
+    @Slash('help')
+    private help(interaction: CommandInteraction) {
+        const embedHelp = new MessageEmbed()
+            .setTitle('Help')
+            .setDescription('Cześć wszystkim! Jestem TheCircleBot, nasz kółeczkowy bot. Na razie posiadam takie komendy (dostępne po znaku \'!\'):')
+            .addFields(
+                { name: 'help', value: 'Shows this embed message' },
+                { name: 'ping', value: 'Ping bot' },
+                { name: 'roll', value: 'Rolls dices: arguments should be structured like this: 2d10+3' },
+                { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
+                { name: 'holidays', value: "Shows today's international and weird holidays"},
+                { name: 'book', value: 'Sends the link to the ebook'},
+                { name: 'cron', value: 'set up or remove a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days'},
+                { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
+                { name: 'skip', value: 'Skips to next song in queue'},
+                { name: 'queue', value: 'Lists all songs added to the queue'},
+                { name: 'stop', value: 'Stop playing music and leave the voice channel'}
+            )
+        interaction.reply({ embeds: [embedHelp] })
+    }
+
+    @Slash('ping')
+    private ping(interaction: CommandInteraction) {
+        interaction.reply("Pong!")
+    }
+
+    @Slash('roll')
+    private roll(
+        @SlashOption("sides", { description: "amount of sides on these dices", type: "INTEGER", required: true }) die_sides: number,
+        @SlashOption("amount", { description: "amount of dices", type: "INTEGER" }) die_amount: number,
+        @SlashOption("offset", { description: "amount to add to the result", type: "INTEGER" }) die_offset: number,
+        interaction: CommandInteraction
+    ) {
+        if (die_amount === null)
+            die_amount = 1
+        var results: string = ''
+        for (var i = 0; i < die_amount; ++i) {
+            results = results + (Math.floor((Math.random() * die_sides)) + 1 + die_offset).toString() + ' ';
+        }
+        interaction.reply(results)
+    }
+}
+
+// the great switch
+
 bot.on('messageCreate', async (message: Message): Promise<void> => {
     let args: string[];
 
@@ -198,56 +247,9 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
 
         args = args.splice(1);
         switch(cmd) {
-            case 'help':
-                const embedHelp = new Discord.MessageEmbed()
-                    .setTitle('Help')
-                    .setDescription('Cześć wszystkim! Jestem TheCircleBot, nasz kółeczkowy bot. Na razie posiadam takie komendy (dostępne po znaku \'!\'):')
-                    .addFields(
-                        { name: 'help', value: 'Shows this embed message' },
-                        { name: 'ping', value: 'Ping bot' },
-                        { name: 'roll', value: 'Rolls dices: arguments should be structured like this: 2d10+3' },
-                        { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
-                        { name: 'holidays', value: "Shows today's international and weird holidays"},
-                        { name: 'book', value: 'Sends the link to the ebook'},
-                        { name: 'cron', value: 'set up or remove a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days'},
-                        { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
-                        { name: 'skip', value: 'Skips to next song in queue'},
-                        { name: 'queue', value: 'Lists all songs added to the queue'},
-                        { name: 'stop', value: 'Stop playing music and leave the voice channel'}
-                    )
-                await message.channel.send({ embeds: [embedHelp] })
-                break;
-            case 'ping':
-                await message.channel.send('Pong!')
-                break;
-            case 'roll':
-                if (args.length > 0) {
-                    let dices = args[0].split('d');
-                    if (dices.length === 2) {
-                        if (dices[0] === '') {
-                            dices = ['1', dices[1]];
-                        }
-                        let dices_offset = 0;
-                        if (dices[1].includes('+')) {
-                            let args = dices[1].split('+');
-                            dices[1] = args[0];
-                            if (args[1] !== '') {
-                                dices_offset = parseInt(args[1]);
-                            }
-                        }
-                        const dices_amount = parseInt(dices[0]);
-                        const dices_size = parseInt(dices[1]);
-                        let i, results = '';
-                        for (i = 0; i < dices_amount; ++i) {
-                            results = results + (Math.floor((Math.random() * dices_size)) + 1 + dices_offset).toString() + ' ';
-                        }
-                        await message.channel.send(results)
-                    }
-                }
-                break;
             case 'event':
                 if (args.length > 0) {
-                    const embedEvent = new Discord.MessageEmbed()
+                    const embedEvent = new MessageEmbed()
                         .setTitle(args.join(' '))
                         .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
                     await message.channel.send({ embeds: [embedEvent] }).then(sent => {
@@ -265,7 +267,7 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
                     for (i = 1; i < options.length; ++i) {
                         result = result + stupid_not_working_emojis[i - 1] + ' ' + options[i] + '\n';
                     }
-                    const embedPoll = new Discord.MessageEmbed()
+                    const embedPoll = new MessageEmbed()
                         .setTitle(options[0])
                         .setDescription(result)
                     await message.channel.send({ embeds: [embedPoll] }).then(sent => {
@@ -279,7 +281,7 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
             case 'holidays': {
                 const holidays = await getHolidaysWrapper(url);
                 let date = new Date().toISOString().slice(0, 10).split('-');
-                const embedHolidays = new Discord.MessageEmbed()
+                const embedHolidays = new MessageEmbed()
                     .setTitle("Today's Holidays:")
                     .setDescription(date[2]+' '+months[parseInt(date[1])-1]+' '+date[0])
                 holidays.forEach((entry: string) => {
@@ -359,7 +361,7 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
                     case 'start': {
                         let cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6];
                         crons[args[1]] = cron.schedule(cron_arg, () => {
-                            message.channel.send({ embeds: [new Discord.MessageEmbed().setTitle(args.slice(7).join(' '))] })
+                            message.channel.send({ embeds: [new MessageEmbed().setTitle(args.slice(7).join(' '))] })
                         }, {
                             timezone: 'Europe/Warsaw',
                             scheduled: false
@@ -387,7 +389,7 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
             //     break;
             // }
             case 'queue':
-                const embedQueue = new Discord.MessageEmbed()
+                const embedQueue = new MessageEmbed()
                     .setTitle('Queue')
                     .setDescription(serverQueue.songs)
                 await message.channel.send({ embeds: [embedQueue] })
@@ -420,10 +422,16 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
     };
 });
 
-bot.once('ready', () => {
+bot.once('ready', async () => {
+    await bot.initApplicationCommands();
+    await bot.initApplicationPermissions();
     console.log('bot is online');
     bot.user?.setStatus('online');
     bot.user?.setActivity({ name: '!help', type: 'WATCHING' });
+});
+
+bot.on("interactionCreate", (interaction) => {
+    bot.executeInteraction(interaction);
 });
 
 bot.once('reconnecting', () => {
