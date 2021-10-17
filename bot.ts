@@ -352,26 +352,25 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
                 break;
             }
             case 'cron': {
-                console.log(args);
                 if (args[0] != 'start' && !(args[1] in crons)) {
                     await message.channel.send('No such job as \"'+args[1]+'\"!')
                 }
                 switch(args[0]) {
                     case 'start': {
-                        let cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6]
+                        let cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6];
                         crons[args[1]] = cron.schedule(cron_arg, () => {
                             message.channel.send({ embeds: [new Discord.MessageEmbed().setTitle(args.slice(7).join(' '))] })
                         }, {
                             timezone: 'Europe/Warsaw',
                             scheduled: false
-                        });
+			            });
                         crons[args[1]].start();
                         break;
                     }
-                    case 'kill': {
+                    case 'kill':
                         crons[args[1]].stop();
-                        delete(crons[args[1]])
-                    }
+                        delete(crons[args[1]]);
+			            break;
                 }
                 break;
             }
