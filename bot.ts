@@ -1,22 +1,24 @@
-const Discord = require('discord.js');
-const ytdl = require("ytdl-core");
+import Discord, { Awaitable, Client, Intents, Message } from 'discord.js';
+import ytdl from "ytdl-core";
+import got from 'got';
+import { resolveIGuild } from 'discordx';
+import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
 const YouTube = require("youtube-node");
-const got = require('got');
 const jsdom = require("jsdom");
 const auth = require('./auth.json');
 const cron = require('node-cron')
-const bot = new Discord.Client();
-const musicQueue = new Map();
 const { JSDOM } = jsdom;
 const url = 'http://www.holidayscalendar.com';
 // const url = 'https://www.checkiday.com';
-const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-var interval;
-let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
 
-let crons = {}
+const bot = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+const musicQueue = new Map();
+let crons: { [id: string]: typeof cron } = {}
+const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+var interval;
+let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -39,132 +41,143 @@ let crons = {}
 //
 // channel.send(exampleEmbed);
 
-const musicHandle = {
-    execute: async function (message, serverQueue) {
+// const musicHandle = {
+//     execute: async function (message: Discord.Message, serverQueue: any) {
 
-        const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel)
-            return message.channel.send("You need to be in a voice channel to play music");
-        const permissions = voiceChannel.permissionsFor(message.client.user);
-        if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) {
-            return message.channel.send("I need the permissions to join and speak in your voice channel");
-        }
+//         const voiceChannel = message.member?.voice.channel;
+//         if (!voiceChannel)
+//             return message.channel.send("You need to be in a voice channel to play music");
+//         const permissions = voiceChannel.permissionsFor(message.client.user!);
+//         if (!permissions?.has("CONNECT") || !permissions?.has("SPEAK")) {
+//             return message.channel.send("I need the permissions to join and speak in your voice channel");
+//         }
 
-        // works on youtube
-        let args = message.content.split(" ");
-        args.splice(0, 1);
-        let query = args.join(" ");
-        let result = "";
-        if (query.indexOf("youtube.com/") === -1) {
-            let search = new Promise(
-                (resolve, reject) => {
-                    youtube.search(query, 2, function(error, result) {
-                        if (error) { reject(error); }
-                        resolve(result.items[0].id.videoId);
-                    })
-                }
-            );
-            result = await search;
-            query = "https://youtube.com/watch?v=".concat(result);
-        }
+//         // works on youtube
+//         let args = message.content.split(" ");
+//         args.splice(0, 1);
+//         let query = args.join(" ");
+//         let result = "";
+//         if (query.indexOf("youtube.com/") === -1) {
+//             let search = new Promise<string>(
+//                 (resolve, reject) => {
+//                     youtube.search(query, 2, function(error: any, result: any) {
+//                         if (error) { reject(error); }
+//                         resolve(result.items[0].id.videoId);
+//                     })
+//                 }
+//             );
+//             result = await search;
+//             query = "https://youtube.com/watch?v=".concat(result);
+//         }
 
-        let songInfo = await ytdl.getInfo(query);
-        const song = {
-            title: songInfo.videoDetails.title,
-            url: songInfo.videoDetails.video_url
-        };
+//         let songInfo = await ytdl.getInfo(query);
+//         const song = {
+//             title: songInfo.videoDetails.title,
+//             url: songInfo.videoDetails.video_url
+//         };
 
-        if (!serverQueue) {
-            const queueConstruct = {
-                textChannel: message.channel,
-                voiceChannel: voiceChannel,
-                connection: null,
-                songs: [],
-                volume: 5,
-                playing: true
-            };
+//         if (!serverQueue) {
+//             const queueConstruct: {
+//                 textChannel: Discord.TextBasedChannels,
+//                 voiceChannel: Discord.VoiceChannel | Discord.StageChannel,
+//                 connection: VoiceConnection | null,
+//                 songs: Array<{title: string, url: string}>,
+//                 volume: number,
+//                 playing: boolean
+//             } = {
+//                 textChannel: message.channel,
+//                 voiceChannel: voiceChannel,
+//                 connection: null,
+//                 songs: [],
+//                 volume: 5,
+//                 playing: true
+//             };
 
-            musicQueue.set(message.guild.id, queueConstruct);
+//             musicQueue.set(message.guild?.id, queueConstruct);
 
-            queueConstruct.songs.push(song);
+//             queueConstruct.songs.push(song);
+//             queueConstruct.connection = joinVoiceChannel({
+//                 channelId: voiceChannel.id,
+//                 guildId: voiceChannel.guild.id,
+//                 adapterCreator: null
+//             })
 
-            try {
-                queueConstruct.connection = await voiceChannel.join();
-                musicHandle.play(message.guild, queueConstruct.songs[0]);
-            } catch (err) {
-                console.log(err);
-                musicQueue.delete(message.guild.id);
-                return message.channel.send(err);
-            }
-        } else {
-            serverQueue.songs.push(song);
-            return message.channel.send(`${song.title} has been added to the queue`);
-        }
-    },
+//             try {
+//                 musicHandle.play(message.guild, queueConstruct.songs[0]);
+//             } catch (err: any) {
+//                 console.log(err);
+//                 musicQueue.delete(message.guild?.id);
+//                 return message.channel.send(err);
+//             }
+//         } else {
+//             serverQueue.songs.push(song);
+//             return message.channel.send(`${song.title} has been added to the queue`);
+//         }
+//     },
 
-    skip: function (message, serverQueue) {
-        if (!message.member.voice.channel)
-            return message.channel.send(
-                "You have to be in a voice channel to stop the music"
-            );
-        if (!serverQueue)
-            return message.channel.send("There is no song that I could skip");
-        serverQueue.connection.dispatcher.end();
-    },
+//     skip: function (message: Discord.Message, serverQueue: any) {
+//         if (!message.member?.voice.channel)
+//             return message.channel.send(
+//                 "You have to be in a voice channel to stop the music"
+//             );
+//         if (!serverQueue)
+//             return message.channel.send("There is no song that I could skip");
+//         serverQueue.connection.dispatcher.end();
+//     },
 
-    stop: function (message, serverQueue) {
-        if (!message.member.voice.channel)
-            return message.channel.send(
-                "You have to be in a voice channel to stop the music"
-            );
+//     stop: function (message: Discord.Message, serverQueue: any) {
+//         if (!message.member?.voice.channel)
+//             return message.channel.send(
+//                 "You have to be in a voice channel to stop the music"
+//             );
 
-        if (!serverQueue)
-            return message.channel.send("There is no song that I could stop");
+//         if (!serverQueue)
+//             return message.channel.send("There is no song that I could stop");
 
-        serverQueue.songs = [];
-        serverQueue.connection.dispatcher.end();
-    },
+//         serverQueue.songs = [];
+//         serverQueue.connection.dispatcher.end();
+//     },
 
-    play: function (guild, song) {
-        const serverQueue = musicQueue.get(guild.id);
-        if (!song) {
-            serverQueue.voiceChannel.leave();
-            musicQueue.delete(guild.id);
-            return;
-        }
+//     play: function (guild: Discord.Guild | null, song: {title: string, url: string}) {
+//         const serverQueue = musicQueue.get(guild?.id);
+//         if (!song) {
+//             serverQueue.voiceChannel.leave();
+//             musicQueue.delete(guild?.id);
+//             return;
+//         }
 
-        const dispatcher = serverQueue.connection
-            .play(ytdl(song.url))
-            .on("finish", () => {
-                serverQueue.songs.shift();
-                musicHandle.play(guild, serverQueue.songs[0]);
-            })
-            .on("error", error => console.error(error));
-        dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
-        serverQueue.textChannel.send(`Started playing: **${song.title}**`);
-    }
-};
+//         const dispatcher = serverQueue.connection
+//             .play(ytdl(song.url))
+//             .on("finish", () => {
+//                 serverQueue.songs.shift();
+//                 musicHandle.play(guild, serverQueue.songs[0]);
+//             })
+//             .on("error", (error: any) => console.error(error));
+//         dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
+//         serverQueue.textChannel.send(`Started playing: **${song.title}**`);
+//     }
+// };
 
-async function getHolidays(url) {
+async function getHolidays(url: string) {
     try {
         const response = await got(url);
         const dom = new JSDOM(response.body);
         return dom.window.document.querySelector('table').textContent;
-    } catch (error) {
+    } catch (error: any) {
         console.log(error.response.body);
     }
 }
 
-async function getHolidaysWrapper(url) {
+async function getHolidaysWrapper(url: string) {
     return await getHolidays(url).then(result => {
         let text = result;
         text = text.split('    ').join('');
         text = text.split('\n');
-        text = text.filter(function (elmnt) { return elmnt !== ''; });
+        text = text.filter(function (elmnt: string) { return elmnt !== ''; });
         text.shift(); text.shift(); text.shift();
-        text_size = text.length / 3;
+        let text_size = text.length / 3;
         let final_result = []
-        for (i = 0; i < text_size; i++) {
+        for (var i = 0; i < text_size; i++) {
             if (text[3*i+2] === 'Weird' || text[3*i+2] === 'Multiple Types') {
                 final_result.push(text[3*i])
             }
@@ -174,16 +187,14 @@ async function getHolidaysWrapper(url) {
     })
 }
 
-bot.on('message', async message => {
-    // console.log(message.content)
-    let args;
+bot.on('messageCreate', async (message: Message): Promise<void> => {
+    let args: string[];
 
-    // the command if
     if (message.content.substring(0, 1) === '!') {
         args = message.content.substring(1).split(' ');
         const cmd = args[0];
 
-        const serverQueue = musicQueue.get(message.guild.id);
+        const serverQueue = musicQueue.get(message.guild?.id);
 
         args = args.splice(1);
         switch(cmd) {
@@ -204,7 +215,7 @@ bot.on('message', async message => {
                         { name: 'queue', value: 'Lists all songs added to the queue'},
                         { name: 'stop', value: 'Stop playing music and leave the voice channel'}
                     )
-                await message.channel.send(embedHelp)
+                await message.channel.send({ embeds: [embedHelp] })
                 break;
             case 'ping':
                 await message.channel.send('Pong!')
@@ -239,7 +250,7 @@ bot.on('message', async message => {
                     const embedEvent = new Discord.MessageEmbed()
                         .setTitle(args.join(' '))
                         .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
-                    await message.channel.send(embedEvent).then(sent => {
+                    await message.channel.send({ embeds: [embedEvent] }).then(sent => {
                         sent.react("🟢")
                         sent.react("🟡")
                         sent.react("🔴")
@@ -248,8 +259,7 @@ bot.on('message', async message => {
                 break;
             case 'poll':
                 if (args.length > 0) {
-                    args = args.join(' ');
-                    const options = args.split('\'').filter(i => i !== ' ').filter(i => i);
+                    const options = args.join(' ').split('\'').filter(i => i !== ' ').filter(i => i);
                     let result = '';
                     let i;
                     for (i = 1; i < options.length; ++i) {
@@ -258,7 +268,7 @@ bot.on('message', async message => {
                     const embedPoll = new Discord.MessageEmbed()
                         .setTitle(options[0])
                         .setDescription(result)
-                    await message.channel.send(embedPoll).then(sent => {
+                    await message.channel.send({ embeds: [embedPoll] }).then(sent => {
                         let i;
                         for (i = 1; i < options.length; ++i) {
                             sent.react(stupid_not_working_emojis[i - 1])
@@ -269,19 +279,18 @@ bot.on('message', async message => {
             case 'holidays': {
                 const holidays = await getHolidaysWrapper(url);
                 let date = new Date().toISOString().slice(0, 10).split('-');
-                date = date[2]+' '+months[parseInt(date[1])-1]+' '+date[0];
                 const embedHolidays = new Discord.MessageEmbed()
                     .setTitle("Today's Holidays:")
-                    .setDescription(date)
-                holidays.forEach(entry => {
+                    .setDescription(date[2]+' '+months[parseInt(date[1])-1]+' '+date[0])
+                holidays.forEach((entry: string) => {
                     embedHolidays.addField(entry, '\u200b');
                 });
-                await message.channel.send(embedHolidays)
+                await message.channel.send({ embeds: [embedHolidays] })
                 break;
             }
             case 'nick':
-                if (!message.guild.me.hasPermission('MANAGE_NICKNAMES'))
-                    return message.channel.send('I don\'t have permission to change your nickname!');
+                if (!message.guild?.me?.permissions.has('MANAGE_NICKNAMES'))
+                    await message.channel.send('I don\'t have permission to change your nickname!');
                 if (args.length === 2) {
                     let userID;
                     switch (args[1]) {
@@ -299,7 +308,7 @@ bot.on('message', async message => {
                             break;
                     }
 
-                    bot.guilds.cache.get(auth.serverID).members.fetch().then(member => console.log(member.toJSON()));
+                    bot.guilds.cache.get(auth.serverID)?.members.fetch().then(member => console.log(member.toJSON()));
 
                     // console.log(userID);
                     // console.log("");
@@ -331,7 +340,7 @@ bot.on('message', async message => {
                     // })
                 }
                 else {
-                    await message.member.setNickname(args[0]);
+                    await message.member?.setNickname(args[0]);
                 }
                 break;
             case 'whois': {
@@ -349,9 +358,9 @@ bot.on('message', async message => {
                 }
                 switch(args[0]) {
                     case 'start': {
-                        cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6]
+                        let cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6]
                         crons[args[1]] = cron.schedule(cron_arg, () => {
-                            message.channel.send(new Discord.MessageEmbed().setTitle(args.slice(7).join(' ')))
+                            message.channel.send({ embeds: [new Discord.MessageEmbed().setTitle(args.slice(7).join(' '))] })
                         }, {
                             timezone: 'Europe/Warsaw',
                             scheduled: false
@@ -366,22 +375,23 @@ bot.on('message', async message => {
                 }
                 break;
             }
-            case 'play': {
-                await musicHandle.execute(message, serverQueue);
-                break;
-            }
-            case 'skip': {
-                musicHandle.skip(message, serverQueue);
-                break;
-            }
-            case 'stop': {
-                musicHandle.stop(message, serverQueue);
-            }
+            // case 'play': {
+            //     await musicHandle.execute(message, serverQueue);
+            //     break;
+            // }
+            // case 'skip': {
+            //     musicHandle.skip(message, serverQueue);
+            //     break;
+            // }
+            // case 'stop': {
+            //     musicHandle.stop(message, serverQueue);
+            //     break;
+            // }
             case 'queue':
                 const embedQueue = new Discord.MessageEmbed()
                     .setTitle('Queue')
                     .setDescription(serverQueue.songs)
-                await message.channel.send(embedQueue)
+                await message.channel.send({ embeds: [embedQueue] })
                 break;
         }
     }
@@ -407,19 +417,14 @@ bot.on('message', async message => {
         await message.channel.send('Oj tam, nie martw się, będzie dobrze :blush:')
     }
     if (message.content.substring(1, 4) === 'dam') {
-        await message.channel.send('Dokładnie :smiley:')
-    }
+        await message.channel.send('Dokładnie :smiley:');
+    };
 });
 
 bot.once('ready', () => {
     console.log('bot is online');
-    bot.user.setPresence({
-        status: 'available',
-        activity: {
-            name: '!help',
-            type: 'WATCHING'
-        }
-    });
+    bot.user?.setStatus('online');
+    bot.user?.setActivity({ name: '!help', type: 'WATCHING' });
 });
 
 bot.once('reconnecting', () => {
@@ -428,6 +433,7 @@ bot.once('reconnecting', () => {
 
 bot.once('disconnect', () => {
     console.log('disconnected');
+    bot.user?.setStatus('dnd');
 });
 
 bot.login(auth.token);
