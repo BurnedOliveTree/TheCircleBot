@@ -1,25 +1,46 @@
-import { Awaitable, CommandInteraction, GuildMember, Intents, Message, MessageEmbed, Role, User } from 'discord.js';
+import { CommandInteraction, Guild, GuildMember, Intents, Message, MessageEmbed, Role, StageChannel, TextBasedChannels, User, VoiceChannel } from 'discord.js';
 import ytdl from "ytdl-core";
-import got, { setNonEnumerableProperties } from 'got';
-import { Client, Discord, Slash, resolveIGuild, SlashOption, Guard, Guild, SlashChoice, SlashGroup, GuardFunction, ArgsOf, On } from 'discordx';
-import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
-const YouTube = require("youtube-node");
-const jsdom = require("jsdom");
-import auth from './auth.json';
-const cron = require('node-cron')
+import got from 'got';
+import * as discordx from 'discordx';
+import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, joinVoiceChannel, PlayerSubscription, VoiceConnection } from '@discordjs/voice';
+import youtubeSearch from "youtube-search";
+import * as jsdom from "jsdom";
+import * as cron from 'node-cron';
 const { JSDOM } = jsdom;
+
+import auth from './auth.json';
+const bot = new discordx.Client({ intents: [
+    Intents.FLAGS.GUILDS,
+    Intents.FLAGS.GUILD_MESSAGES,
+    Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
+    Intents.FLAGS.GUILD_MEMBERS,
+    Intents.FLAGS.GUILD_PRESENCES,
+    Intents.FLAGS.GUILD_VOICE_STATES
+] });
 const url = 'http://www.holidayscalendar.com';
 // const url = 'https://www.checkiday.com';
-let youtube = new YouTube();
-youtube.setKey(auth.googleKey);
 
-const bot = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS] });
-const musicQueue = new Map();
-let crons: { [id: string]: typeof cron } = {}
+const youtubeOptions: youtubeSearch.YouTubeSearchOptions = {
+    maxResults: 2,
+    key: auth.googleKey
+}
+declare const queueConstruct: {
+    textChannel: TextBasedChannels,
+    voiceChannel: VoiceChannel | StageChannel,
+    player: AudioPlayer,
+    connection: VoiceConnection,
+    subscription: PlayerSubscription | null | undefined,
+    songs: Array<{title: string, url: string}>,
+    volume: number,
+    playing: boolean
+}
+type QueueConstruct = typeof queueConstruct
+const musicQueue = new Map<string, QueueConstruct>();
+let crons: { [id: string]: cron.ScheduledTask } = {}
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
+const stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 
-export const NotBot: GuardFunction<ArgsOf<"messageCreate">> = async (
+const NotBot: discordx.GuardFunction<discordx.ArgsOf<"messageCreate">> = async (
     [message],
     client,
     next
@@ -48,128 +69,11 @@ export const NotBot: GuardFunction<ArgsOf<"messageCreate">> = async (
 // 	.setTimestamp()
 // 	.setFooter('Some footer text here', 'https://i.imgur.com/wSTFkRM.png');
 
-// const musicHandle = {
-//     execute: async function (message: Discord.Message, serverQueue: any) {
-
-//         const voiceChannel = message.member?.voice.channel;
-//         if (!voiceChannel)
-//             return message.channel.send("You need to be in a voice channel to play music");
-//         const permissions = voiceChannel.permissionsFor(message.client.user!);
-//         if (!permissions?.has("CONNECT") || !permissions?.has("SPEAK")) {
-//             return message.channel.send("I need the permissions to join and speak in your voice channel");
-//         }
-
-//         // works on youtube
-//         let args = message.content.split(" ");
-//         args.splice(0, 1);
-//         let query = args.join(" ");
-//         let result = "";
-//         if (query.indexOf("youtube.com/") === -1) {
-//             let search = new Promise<string>(
-//                 (resolve, reject) => {
-//                     youtube.search(query, 2, function(error: any, result: any) {
-//                         if (error) { reject(error); }
-//                         resolve(result.items[0].id.videoId);
-//                     })
-//                 }
-//             );
-//             result = await search;
-//             query = "https://youtube.com/watch?v=".concat(result);
-//         }
-
-//         let songInfo = await ytdl.getInfo(query);
-//         const song = {
-//             title: songInfo.videoDetails.title,
-//             url: songInfo.videoDetails.video_url
-//         };
-
-//         if (!serverQueue) {
-//             const queueConstruct: {
-//                 textChannel: Discord.TextBasedChannels,
-//                 voiceChannel: Discord.VoiceChannel | Discord.StageChannel,
-//                 connection: VoiceConnection | null,
-//                 songs: Array<{title: string, url: string}>,
-//                 volume: number,
-//                 playing: boolean
-//             } = {
-//                 textChannel: message.channel,
-//                 voiceChannel: voiceChannel,
-//                 connection: null,
-//                 songs: [],
-//                 volume: 5,
-//                 playing: true
-//             };
-
-//             musicQueue.set(message.guild?.id, queueConstruct);
-
-//             queueConstruct.songs.push(song);
-//             queueConstruct.connection = joinVoiceChannel({
-//                 channelId: voiceChannel.id,
-//                 guildId: voiceChannel.guild.id,
-//                 adapterCreator: null
-//             })
-
-//             try {
-//                 musicHandle.play(message.guild, queueConstruct.songs[0]);
-//             } catch (err: any) {
-//                 console.log(err);
-//                 musicQueue.delete(message.guild?.id);
-//                 return message.channel.send(err);
-//             }
-//         } else {
-//             serverQueue.songs.push(song);
-//             return message.channel.send(`${song.title} has been added to the queue`);
-//         }
-//     },
-
-//     skip: function (message: Discord.Message, serverQueue: any) {
-//         if (!message.member?.voice.channel)
-//             return message.channel.send(
-//                 "You have to be in a voice channel to stop the music"
-//             );
-//         if (!serverQueue)
-//             return message.channel.send("There is no song that I could skip");
-//         serverQueue.connection.dispatcher.end();
-//     },
-
-//     stop: function (message: Discord.Message, serverQueue: any) {
-//         if (!message.member?.voice.channel)
-//             return message.channel.send(
-//                 "You have to be in a voice channel to stop the music"
-//             );
-
-//         if (!serverQueue)
-//             return message.channel.send("There is no song that I could stop");
-
-//         serverQueue.songs = [];
-//         serverQueue.connection.dispatcher.end();
-//     },
-
-//     play: function (guild: Discord.Guild | null, song: {title: string, url: string}) {
-//         const serverQueue = musicQueue.get(guild?.id);
-//         if (!song) {
-//             serverQueue.voiceChannel.leave();
-//             musicQueue.delete(guild?.id);
-//             return;
-//         }
-
-//         const dispatcher = serverQueue.connection
-//             .play(ytdl(song.url))
-//             .on("finish", () => {
-//                 serverQueue.songs.shift();
-//                 musicHandle.play(guild, serverQueue.songs[0]);
-//             })
-//             .on("error", (error: any) => console.error(error));
-//         dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
-//         serverQueue.textChannel.send(`Started playing: **${song.title}**`);
-//     }
-// };
-
 // slash commands
 
-@Discord()
+@discordx.Discord()
 abstract class TheCircleBot {
-    @Slash('help')
+    @discordx.Slash('help')
     private help(interaction: CommandInteraction) {
         const embedHelp = new MessageEmbed()
             .setTitle('Help')
@@ -190,24 +94,24 @@ abstract class TheCircleBot {
         interaction.reply({ embeds: [embedHelp] })
     }
 
-    @Slash('ping')
+    @discordx.Slash('ping')
     private ping(interaction: CommandInteraction) {
         interaction.reply("Pong!")
     }
 
-    @Slash("whois")
+    @discordx.Slash("whois")
     private whois(
-        @SlashOption("x", { type: "MENTIONABLE", required: true }) mentionable: GuildMember | User | Role,
+        @discordx.SlashOption("x", { type: "MENTIONABLE", required: true }) mentionable: GuildMember | User | Role,
         interaction: CommandInteraction
     ) {
         interaction.reply(mentionable.id);
     }
 
-    @Slash('roll')
+    @discordx.Slash('roll')
     private roll(
-        @SlashOption("sides", { description: "amount of sides on these dices", type: "INTEGER", required: true }) die_sides: number,
-        @SlashOption("amount", { description: "amount of dices", type: "INTEGER" }) die_amount: number,
-        @SlashOption("offset", { description: "amount to add to the result", type: "INTEGER" }) die_offset: number,
+        @discordx.SlashOption("sides", { description: "amount of sides on these dices", type: "INTEGER", required: true }) die_sides: number,
+        @discordx.SlashOption("amount", { description: "amount of dices", type: "INTEGER" }) die_amount: number,
+        @discordx.SlashOption("offset", { description: "amount to add to the result", type: "INTEGER" }) die_offset: number,
         interaction: CommandInteraction
     ) {
         if (die_amount === undefined || die_amount <= 0)
@@ -221,9 +125,9 @@ abstract class TheCircleBot {
         interaction.reply(results)
     }
 
-    @Slash('event')
+    @discordx.Slash('event')
     private async event(
-        @SlashOption("name", { description: "name of the message", type: "STRING", required: true }) name: string,
+        @discordx.SlashOption("name", { description: "name of the message", type: "STRING", required: true }) name: string,
         interaction: CommandInteraction
     ) {
         const embedEvent = new MessageEmbed()
@@ -237,9 +141,9 @@ abstract class TheCircleBot {
         message.react("🔴")
     }
 
-    @Slash('poll')
+    @discordx.Slash('poll')
     private async poll(
-        @SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
+        @discordx.SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
         interaction: CommandInteraction
     ) {
         const options = args.split('\'').filter((i: string) => i !== ' ').filter((i: string) => i);
@@ -259,24 +163,21 @@ abstract class TheCircleBot {
         }
     }
 
-    @Slash('holidays')
+    @discordx.Slash('holidays')
     private async holidays(interaction: CommandInteraction) {
         async function getHolidaysWrapper(url: string) {
             async function getHolidays(url: string) {
                 try {
                     const response = await got(url);
                     const dom = new JSDOM(response.body);
-                    return dom.window.document.querySelector('table').textContent;
+                    return dom.window.document.querySelector('table')!.textContent;
                 } catch (error: any) {
                     console.log(error.response.body);
                 }
             }
 
             return await getHolidays(url).then(result => {
-                let text = result;
-                text = text.split('    ').join('');
-                text = text.split('\n');
-                text = text.filter(function (elmnt: string) { return elmnt !== ''; });
+                let text = result!.split('    ').join('').split('\n').filter(function (elmnt: string) { return elmnt !== ''; });
                 text.shift(); text.shift(); text.shift();
                 let text_size = text.length / 3;
                 let final_result = []
@@ -301,17 +202,17 @@ abstract class TheCircleBot {
         interaction.reply({ embeds: [embedHolidays] })
     }
 
-    @Guild(auth.serverID)
-    @Slash('book')
+    @discordx.Guild(auth.serverID)
+    @discordx.Slash('book')
     private book(interaction: CommandInteraction) {
         interaction.reply("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly)
     }
 
-    @Guild(auth.serverID)
+    @discordx.Guild(auth.serverID)
     // @Slash('nick')
     private nick(
-        @SlashChoice(auth.memberIDs)
-        @SlashOption("name", { description: "name of a member", required: true }) memberID: number,
+        @discordx.SlashChoice(auth.memberIDs)
+        @discordx.SlashOption("name", { description: "name of a member", required: true }) memberID: number,
         interaction: CommandInteraction
     ) {
         if (!bot.guilds.cache.get(auth.serverID)?.me?.permissions.has('MANAGE_NICKNAMES'))
@@ -350,10 +251,10 @@ abstract class TheCircleBot {
         }
     }
 
-    @On('messageCreate')
-    @Guard(NotBot)
+    @discordx.On('messageCreate')
+    @discordx.Guard(NotBot)
     private onMessage(
-        [message]: ArgsOf<"messageCreate">
+        [message]: discordx.ArgsOf<"messageCreate">
     ) {
         if (message.content.substring(0, 4) === 'Cześć') {
             let args = message.content.substring(4).split(' ');
@@ -387,19 +288,19 @@ abstract class TheCircleBot {
     }
 }
 
-@Discord()
-@SlashGroup("cron", "cron commands group")
+@discordx.Discord()
+@discordx.SlashGroup("cron", "cron commands group")
 abstract class CronGroup {
 
-    @Slash('start')
+    @discordx.Slash('start')
     private start(
-        @SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
-        @SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
-        @SlashOption("minute", { description: "cron minute argument", type: "STRING", required: true }) minute: string,
-        @SlashOption("hour", { description: "cron hour argument", type: "STRING", required: true }) hour: string,
-        @SlashOption("day", { description: "cron day argument", type: "STRING", required: true }) day_of_the_month: string,
-        @SlashOption("month", { description: "cron month argument", type: "STRING", required: true }) month: string,
-        @SlashOption("week", { description: "cron day of the week argument", type: "STRING", required: true }) day_of_the_week: string,
+        @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
+        @discordx.SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
+        @discordx.SlashOption("minute", { description: "cron minute argument", type: "STRING", required: true }) minute: string,
+        @discordx.SlashOption("hour", { description: "cron hour argument", type: "STRING", required: true }) hour: string,
+        @discordx.SlashOption("day", { description: "cron day argument", type: "STRING", required: true }) day_of_the_month: string,
+        @discordx.SlashOption("month", { description: "cron month argument", type: "STRING", required: true }) month: string,
+        @discordx.SlashOption("week", { description: "cron day of the week argument", type: "STRING", required: true }) day_of_the_week: string,
         interaction: CommandInteraction
     ) {
         let cron_arg = minute + ' ' + hour + ' ' + day_of_the_month + ' ' + month + ' ' + day_of_the_week;
@@ -413,9 +314,9 @@ abstract class CronGroup {
         interaction.reply("Added new "+message+" cron")
     }
     
-    @Slash('kill')
+    @discordx.Slash('kill')
     private kill(
-        @SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
+        @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         interaction: CommandInteraction
     ) {
         if (!(name in crons)) { // does this check the keys or values?
@@ -429,40 +330,160 @@ abstract class CronGroup {
     }
 }
 
-// the great switch
+@discordx.Discord()
+@discordx.SlashGroup("music", "music commands group")
+abstract class MusicGroup {
 
-bot.on('messageCreate', async (message: Message): Promise<void> => {
-    let args: string[];
+    private playNext(serverQueue: QueueConstruct, guildId: string) {
+        serverQueue.songs.shift() // pop first element
+        if (serverQueue.songs.length === 0) {
+            serverQueue.textChannel.send(`There are no more songs in the queue, bye!`);
+            this.destroy(serverQueue, guildId);
+        }
+        serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
+        serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
+    }
 
-    if (message.content.substring(0, 1) === '!') {
-        args = message.content.substring(1).split(' ');
-        const cmd = args[0];
+    private destroy(serverQueue: QueueConstruct, guildId: string) {
+        serverQueue.player.stop();
+        serverQueue.subscription!.unsubscribe();
+        serverQueue.connection.destroy();
+        musicQueue.delete(guildId);
+    }
 
-        const serverQueue = musicQueue.get(message.guild?.id);
+    @discordx.Slash('play')
+    private async play(
+        @discordx.SlashOption("query", { description: "query to search for in YT", type: "STRING", required: true }) query: string,
+        interaction: CommandInteraction
+    ) {
+        async function findSong(query: string): Promise<string> {
+            // if an URL is not in query, search YouTube, find an URL and replace query with it
+            if (!query.includes("youtube.com/")) {
+                let search: string = ''
+                await youtubeSearch(query, youtubeOptions, (error, results) => {
+                    if (error)
+                        return console.log(error);
+                    search = results![0].id;
+                });
+                return "https://youtube.com/watch?v=".concat(search);
+            }
+            else
+                return query
+        }
 
-        args = args.splice(1);
-        switch(cmd) {
-            // case 'play': {
-            //     await musicHandle.execute(message, serverQueue);
-            //     break;
-            // }
-            // case 'skip': {
-            //     musicHandle.skip(message, serverQueue);
-            //     break;
-            // }
-            // case 'stop': {
-            //     musicHandle.stop(message, serverQueue);
-            //     break;
-            // }
-            // case 'queue':
-            //     const embedQueue = new MessageEmbed()
-            //         .setTitle('Queue')
-            //         .setDescription(serverQueue.songs)
-            //     await message.channel.send({ embeds: [embedQueue] })
-            //     break;
+        const serverQueue = musicQueue.get(interaction.guildId!)
+
+        const voiceChannel = interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel;
+        if (!voiceChannel)
+            interaction.reply("You need to be in a voice channel to play music");
+
+        const permissions = voiceChannel!.permissionsFor(bot.user!);
+        if (!permissions!.has("CONNECT") || !permissions!.has("SPEAK"))
+            interaction.reply("I need the permissions to join and speak in your voice channel");
+
+        let songInfo = await ytdl.getInfo(await findSong(query));
+        const song = {
+            title: songInfo.videoDetails.title,
+            url: songInfo.videoDetails.video_url
+        };
+
+        if (!serverQueue) {
+            const serverQueue: QueueConstruct = {
+                textChannel: interaction.channel!,
+                voiceChannel: voiceChannel!,
+                player: createAudioPlayer(),
+                connection: joinVoiceChannel({
+                    channelId: voiceChannel!.id,
+                    guildId: voiceChannel!.guild.id,
+                    adapterCreator: voiceChannel!.guild.voiceAdapterCreator as DiscordGatewayAdapterCreator
+                }),
+                subscription: null,
+                songs: [song],
+                volume: 5,
+                playing: true
+            };
+
+            serverQueue.subscription = serverQueue!.connection.subscribe(serverQueue!.player)
+            musicQueue.set(interaction.guildId!, serverQueue);
+            try {
+                serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
+                serverQueue!.player.on(AudioPlayerStatus.Idle, () => {
+                    console.log('ppp')
+                    this.playNext(serverQueue!, interaction.guildId!)
+                })
+            } catch (error: any) {
+                console.log(error);
+                musicQueue.delete(interaction.guildId!);
+            }
+        } else {
+            serverQueue.songs.push(song);
+            interaction.reply(`${song.title} has been added to the queue`);
         }
     }
-});
+
+    @discordx.Slash('skip')
+    private skip(interaction: CommandInteraction) {
+        const serverQueue = musicQueue.get(interaction.guildId!)
+        if (!serverQueue)
+            interaction.reply("There is no song that I could skip");
+
+        if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
+            interaction.reply("You need to be in a voice channel to skip music");
+        
+        this.playNext(serverQueue!, interaction.guildId!)
+    }
+
+    @discordx.Slash('pause')
+    private pause(interaction: CommandInteraction) {
+        const serverQueue = musicQueue.get(interaction.guildId!)
+        if (!serverQueue)
+            interaction.reply("There is no song that I could pause");
+
+        if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
+            interaction.reply("You need to be in a voice channel to pause music");
+        
+        if (serverQueue!.player.state.status === AudioPlayerStatus.Playing)
+            serverQueue!.player.pause();
+    }
+
+    @discordx.Slash('unpause')
+    private unpause(interaction: CommandInteraction) {
+        const serverQueue = musicQueue.get(interaction.guildId!)
+        if (!serverQueue)
+            interaction.reply("There is no song that I could unpause");
+
+        if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
+            interaction.reply("You need to be in a voice channel to unpause music");
+        
+        if (serverQueue!.player.state.status === AudioPlayerStatus.Paused)
+            serverQueue!.player.unpause();
+    }
+
+    @discordx.Slash('stop')
+    private stop(interaction: CommandInteraction) {
+        const serverQueue = musicQueue.get(interaction.guildId!)
+        if (!serverQueue)
+            interaction.reply("There is no song that I could stop");
+
+        if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
+            interaction.reply("You need to be in a voice channel to stop music");
+
+        this.destroy(serverQueue!, interaction.guildId!);
+    }
+
+    @discordx.Slash('queue')
+    private queue(interaction: CommandInteraction) {
+        const serverQueue = musicQueue.get(interaction.guildId!)
+
+        if (!serverQueue)
+            interaction.reply("There is no song in the queue");
+
+        const embedQueue = new MessageEmbed()
+            .setTitle('Queue')
+            .setDescription(serverQueue!.songs.join(' '))
+        interaction.reply({ embeds: [embedQueue] })
+    }
+}
 
 bot.once('ready', async () => {
     await bot.initApplicationCommands();
