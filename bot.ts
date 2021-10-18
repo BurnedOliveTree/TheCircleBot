@@ -1,7 +1,7 @@
 import { Awaitable, CommandInteraction, GuildMember, Intents, Message, MessageEmbed, Role, User } from 'discord.js';
 import ytdl from "ytdl-core";
 import got, { setNonEnumerableProperties } from 'got';
-import { Client, Discord, Slash, resolveIGuild, SlashOption, Guard, Guild, SlashChoice, SlashGroup } from 'discordx';
+import { Client, Discord, Slash, resolveIGuild, SlashOption, Guard, Guild, SlashChoice, SlashGroup, GuardFunction, ArgsOf, On } from 'discordx';
 import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
 const YouTube = require("youtube-node");
 const jsdom = require("jsdom");
@@ -18,6 +18,16 @@ const musicQueue = new Map();
 let crons: { [id: string]: typeof cron } = {}
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
+
+export const NotBot: GuardFunction<ArgsOf<"messageCreate">> = async (
+    [message],
+    client,
+    next
+) => {
+    if (client.user?.id !== message.author.id) {
+        await next();
+    }
+};
 
 // embed example:
 // const exampleEmbed = new Discord.MessageEmbed()
@@ -339,6 +349,42 @@ abstract class TheCircleBot {
             // })
         }
     }
+
+    @On('messageCreate')
+    @Guard(NotBot)
+    private onMessage(
+        [message]: ArgsOf<"messageCreate">
+    ) {
+        if (message.content.substring(0, 4) === 'Cześć') {
+            let args = message.content.substring(4).split(' ');
+            message.channel.send('Cześć '+args.join(' ')+'!')
+        }
+        if (message.content.includes('awaj admina')) {
+            message.channel.send('Nie')
+        }
+        if (message.content.substring(1, 7) === 'estem ') {
+            let args = message.content.substring(7).split(' ');
+            if (args[0].substring(1, 7) === "sawery" || args[0].substring(1, 5) === "dmin")
+                if (parseInt(message.author.id) !== auth.memberIDs["Ksawery"])
+                    message.channel.send('Witaj... Wait a minute, you are not Ksawery. You are not Ksawery at all!')
+                else
+                    message.channel.send('Witaj Ksawery :smiley:')
+            else
+                message.channel.send('Witaj '+args.join(' ')+'! Ja jestem TheCircleBot :grin:!')
+        }
+        if (message.content.substring(1, 8) === 'ie zdam') {
+            message.channel.send('Oj tam, nie martw się, będzie dobrze :blush:')
+        }
+        if (message.content.substring(1, 4) === 'dam') {
+            message.channel.send('Dokładnie :smiley:');
+        };
+        if (message.content.includes('🐙')) {
+            message.channel.send('🐙')
+        }
+        if (message.content.includes('hlep')) {
+            message.channel.send('🍞')
+        }
+    }
 }
 
 @Discord()
@@ -416,33 +462,6 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
             //     break;
         }
     }
-    // the messages replies
-    if (message.content.substring(0, 4) === 'Cześć') {
-        args = message.content.substring(4).split(' ');
-        await message.channel.send('Cześć '+args.join(' ')+'!')
-    }
-    if (message.content.includes('awaj admina')) {
-        await message.channel.send('Nie')
-    }
-    if (message.content.includes(':octopus:')) {
-        await message.channel.send(':octopus:')
-    }
-    if (message.content.substring(1, 7) === 'estem ') {
-        args = message.content.substring(7).split(' ');
-        if (args[0].substring(1, 7) === "sawery" || args[0].substring(1, 5) === "dmin")
-            if (parseInt(message.author.id) !== auth.memberIDs["Ksawery"])
-                await message.channel.send('Witaj... Wait a minute, you are not Ksawery. You are not Ksawery at all!')
-            else
-                await message.channel.send('Witaj Ksawery :smiley:')
-        else
-            await message.channel.send('Witaj '+args.join(' ')+'! Ja jestem TheCircleBot :grin:!')
-    }
-    if (message.content.substring(1, 8) === 'ie zdam') {
-        await message.channel.send('Oj tam, nie martw się, będzie dobrze :blush:')
-    }
-    if (message.content.substring(1, 4) === 'dam') {
-        await message.channel.send('Dokładnie :smiley:');
-    };
 });
 
 bot.once('ready', async () => {
