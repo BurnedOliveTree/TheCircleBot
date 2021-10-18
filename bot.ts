@@ -1,11 +1,11 @@
-import { Awaitable, CommandInteraction, Intents, Message, MessageEmbed } from 'discord.js';
+import { Awaitable, CommandInteraction, GuildMember, Intents, Message, MessageEmbed, Role, User } from 'discord.js';
 import ytdl from "ytdl-core";
-import got from 'got';
-import { Client, Discord, Slash, resolveIGuild, SlashOption } from 'discordx';
+import got, { setNonEnumerableProperties } from 'got';
+import { Client, Discord, Slash, resolveIGuild, SlashOption, Guard, Guild, SlashChoice, SlashGroup } from 'discordx';
 import { joinVoiceChannel, VoiceConnection } from '@discordjs/voice';
 const YouTube = require("youtube-node");
 const jsdom = require("jsdom");
-const auth = require('./auth.json');
+import auth from './auth.json';
 const cron = require('node-cron')
 const { JSDOM } = jsdom;
 const url = 'http://www.holidayscalendar.com';
@@ -13,11 +13,10 @@ const url = 'http://www.holidayscalendar.com';
 let youtube = new YouTube();
 youtube.setKey(auth.googleKey);
 
-const bot = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
+const bot = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILD_MESSAGE_REACTIONS] });
 const musicQueue = new Map();
 let crons: { [id: string]: typeof cron } = {}
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-var interval;
 let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯', '🇰', '🇱', '🇲', '🇳', '🇴', '🇵', '🇶', '🇷', '🇸', '🇹', '🇺', '🇻', '🇼', '🇽', '🇾', '🇿']
 
 // embed example:
@@ -38,8 +37,6 @@ let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫',
 // 	.setImage('https://i.imgur.com/wSTFkRM.png')
 // 	.setTimestamp()
 // 	.setFooter('Some footer text here', 'https://i.imgur.com/wSTFkRM.png');
-//
-// channel.send(exampleEmbed);
 
 // const musicHandle = {
 //     execute: async function (message: Discord.Message, serverQueue: any) {
@@ -158,35 +155,6 @@ let stupid_not_working_emojis = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫',
 //     }
 // };
 
-async function getHolidays(url: string) {
-    try {
-        const response = await got(url);
-        const dom = new JSDOM(response.body);
-        return dom.window.document.querySelector('table').textContent;
-    } catch (error: any) {
-        console.log(error.response.body);
-    }
-}
-
-async function getHolidaysWrapper(url: string) {
-    return await getHolidays(url).then(result => {
-        let text = result;
-        text = text.split('    ').join('');
-        text = text.split('\n');
-        text = text.filter(function (elmnt: string) { return elmnt !== ''; });
-        text.shift(); text.shift(); text.shift();
-        let text_size = text.length / 3;
-        let final_result = []
-        for (var i = 0; i < text_size; i++) {
-            if (text[3*i+2] === 'Weird' || text[3*i+2] === 'Multiple Types') {
-                final_result.push(text[3*i])
-            }
-        }
-        text = final_result;
-        return text;
-    })
-}
-
 // slash commands
 
 @Discord()
@@ -217,6 +185,14 @@ abstract class TheCircleBot {
         interaction.reply("Pong!")
     }
 
+    @Slash("whois")
+    private whois(
+        @SlashOption("x", { type: "MENTIONABLE", required: true }) mentionable: GuildMember | User | Role,
+        interaction: CommandInteraction
+    ) {
+        interaction.reply(mentionable.id);
+    }
+
     @Slash('roll')
     private roll(
         @SlashOption("sides", { description: "amount of sides on these dices", type: "INTEGER", required: true }) die_sides: number,
@@ -224,13 +200,186 @@ abstract class TheCircleBot {
         @SlashOption("offset", { description: "amount to add to the result", type: "INTEGER" }) die_offset: number,
         interaction: CommandInteraction
     ) {
-        if (die_amount === null)
+        if (die_amount === undefined || die_amount <= 0)
             die_amount = 1
+        if (die_offset === undefined)
+            die_offset = 0
         var results: string = ''
         for (var i = 0; i < die_amount; ++i) {
             results = results + (Math.floor((Math.random() * die_sides)) + 1 + die_offset).toString() + ' ';
         }
         interaction.reply(results)
+    }
+
+    @Slash('event')
+    private async event(
+        @SlashOption("name", { description: "name of the message", type: "STRING", required: true }) name: string,
+        interaction: CommandInteraction
+    ) {
+        const embedEvent = new MessageEmbed()
+            .setTitle(name)
+            .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
+        const message = await interaction.reply({ embeds: [embedEvent], fetchReply: true })
+        if (!(message instanceof Message))
+            throw TypeError
+        message.react("🟢")
+        message.react("🟡")
+        message.react("🔴")
+    }
+
+    @Slash('poll')
+    private async poll(
+        @SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
+        interaction: CommandInteraction
+    ) {
+        const options = args.split('\'').filter((i: string) => i !== ' ').filter((i: string) => i);
+        var result = '';
+        for (var i = 1; i < options.length; ++i) {
+            result = result + stupid_not_working_emojis[i - 1] + ' ' + options[i] + '\n';
+        }
+        const embedPoll = new MessageEmbed()
+            .setTitle(options[0])
+            .setDescription(result)
+
+        const message = await interaction.reply({ embeds: [embedPoll], fetchReply: true })
+        if (!(message instanceof Message))
+            throw TypeError
+        for (var i = 1; i < options.length; ++i) {
+            message.react(stupid_not_working_emojis[i - 1])
+        }
+    }
+
+    @Slash('holidays')
+    private async holidays(interaction: CommandInteraction) {
+        async function getHolidaysWrapper(url: string) {
+            async function getHolidays(url: string) {
+                try {
+                    const response = await got(url);
+                    const dom = new JSDOM(response.body);
+                    return dom.window.document.querySelector('table').textContent;
+                } catch (error: any) {
+                    console.log(error.response.body);
+                }
+            }
+
+            return await getHolidays(url).then(result => {
+                let text = result;
+                text = text.split('    ').join('');
+                text = text.split('\n');
+                text = text.filter(function (elmnt: string) { return elmnt !== ''; });
+                text.shift(); text.shift(); text.shift();
+                let text_size = text.length / 3;
+                let final_result = []
+                for (var i = 0; i < text_size; i++) {
+                    if (text[3*i+2] === 'Weird' || text[3*i+2] === 'Multiple Types') {
+                        final_result.push(text[3*i])
+                    }
+                }
+                text = final_result;
+                return text;
+            })
+        }
+
+        const holidays = await getHolidaysWrapper(url);
+        let date = new Date().toISOString().slice(0, 10).split('-');
+        const embedHolidays = new MessageEmbed()
+            .setTitle("Today's Holidays:")
+            .setDescription(date[2]+' '+months[parseInt(date[1])-1]+' '+date[0])
+        holidays.forEach((entry: string) => {
+            embedHolidays.addField(entry, '\u200b');
+        });
+        interaction.reply({ embeds: [embedHolidays] })
+    }
+
+    @Guild(auth.serverID)
+    @Slash('book')
+    private book(interaction: CommandInteraction) {
+        interaction.reply("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly)
+    }
+
+    @Guild(auth.serverID)
+    // @Slash('nick')
+    private nick(
+        @SlashChoice(auth.memberIDs)
+        @SlashOption("name", { description: "name of a member", required: true }) memberID: number,
+        interaction: CommandInteraction
+    ) {
+        if (!bot.guilds.cache.get(auth.serverID)?.me?.permissions.has('MANAGE_NICKNAMES'))
+            interaction.reply('I don\'t have permission to change your nickname!');
+        else {
+            bot.guilds.cache.get(auth.serverID)?.members.fetch().then(member => console.log(member.toJSON()));
+
+            // console.log(memberID);
+            // console.log("");
+            // console.log(message.guild.members.resolve(String(memberID)));
+            // console.log("");
+            // const list = message.client.guilds.cache.get(auth.serverID);
+            // list.members.cache.forEach(member => console.log(member.user.username));
+            // message.guild.fetchAllMembers
+
+            // for (const guild of client.guilds.cache)
+            //     for (const user of await guild.members.fetch())
+            //         console.log(user);
+            //         // user.send('message').catch(() => console.log('User had DMs disabled'));
+
+            // message.guild.members.fetch(String(memberID)).setNickname(args[0]);
+            // let rMember = message.guild.member(await message.guild.members.fetch(memberID));
+            // console.log(rMember);
+            // await rMember.setNickname(args[0]);
+            // let guildMember = message.guild.members.fetch(String(memberID));
+            // console.log((await guildMember).setNickname(args[0]));
+            // await message.guild.members.fetch(String(memberID)).setNickname(args[0]);
+            // await message.guild.members.fetch(String(memberID)).then(member => { member.setNickname(args[0]).catch(error => message.channel.send("ok"));}).catch(error => message.channel.send('fetch error'));
+            // message.guild.members.fetch().then(member => {
+            //     console.log(member.user.id)
+            //     if (member.user.id === (memberID)) {
+            //         console.log(member.user.id)
+            //         member.setNickname(args[0])
+            //     }
+            // })
+        }
+    }
+}
+
+@Discord()
+@SlashGroup("cron", "cron commands group")
+abstract class CronGroup {
+
+    @Slash('start')
+    private start(
+        @SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
+        @SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
+        @SlashOption("minute", { description: "cron minute argument", type: "STRING", required: true }) minute: string,
+        @SlashOption("hour", { description: "cron hour argument", type: "STRING", required: true }) hour: string,
+        @SlashOption("day", { description: "cron day argument", type: "STRING", required: true }) day_of_the_month: string,
+        @SlashOption("month", { description: "cron month argument", type: "STRING", required: true }) month: string,
+        @SlashOption("week", { description: "cron day of the week argument", type: "STRING", required: true }) day_of_the_week: string,
+        interaction: CommandInteraction
+    ) {
+        let cron_arg = minute + ' ' + hour + ' ' + day_of_the_month + ' ' + month + ' ' + day_of_the_week;
+        crons[name] = cron.schedule(cron_arg, () => {
+            interaction.channel?.send({ embeds: [new MessageEmbed().setTitle(message)] })
+        }, {
+            timezone: 'Europe/Warsaw',
+            scheduled: false
+        });
+        crons[name].start();
+        interaction.reply("Added new "+message+" cron")
+    }
+    
+    @Slash('kill')
+    private kill(
+        @SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
+        interaction: CommandInteraction
+    ) {
+        if (!(name in crons)) { // does this check the keys or values?
+            interaction.reply('No such job as \"'+name+'\"!')
+        }
+        else {
+            crons[name].stop();
+            delete(crons[name]);
+            interaction.reply("Deleted cron: "+name)
+        }
     }
 }
 
@@ -247,135 +396,6 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
 
         args = args.splice(1);
         switch(cmd) {
-            case 'event':
-                if (args.length > 0) {
-                    const embedEvent = new MessageEmbed()
-                        .setTitle(args.join(' '))
-                        .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
-                    await message.channel.send({ embeds: [embedEvent] }).then(sent => {
-                        sent.react("🟢")
-                        sent.react("🟡")
-                        sent.react("🔴")
-                    })
-                }
-                break;
-            case 'poll':
-                if (args.length > 0) {
-                    const options = args.join(' ').split('\'').filter(i => i !== ' ').filter(i => i);
-                    let result = '';
-                    let i;
-                    for (i = 1; i < options.length; ++i) {
-                        result = result + stupid_not_working_emojis[i - 1] + ' ' + options[i] + '\n';
-                    }
-                    const embedPoll = new MessageEmbed()
-                        .setTitle(options[0])
-                        .setDescription(result)
-                    await message.channel.send({ embeds: [embedPoll] }).then(sent => {
-                        let i;
-                        for (i = 1; i < options.length; ++i) {
-                            sent.react(stupid_not_working_emojis[i - 1])
-                        }
-                    })
-                }
-                break;
-            case 'holidays': {
-                const holidays = await getHolidaysWrapper(url);
-                let date = new Date().toISOString().slice(0, 10).split('-');
-                const embedHolidays = new MessageEmbed()
-                    .setTitle("Today's Holidays:")
-                    .setDescription(date[2]+' '+months[parseInt(date[1])-1]+' '+date[0])
-                holidays.forEach((entry: string) => {
-                    embedHolidays.addField(entry, '\u200b');
-                });
-                await message.channel.send({ embeds: [embedHolidays] })
-                break;
-            }
-            case 'nick':
-                if (!message.guild?.me?.permissions.has('MANAGE_NICKNAMES'))
-                    await message.channel.send('I don\'t have permission to change your nickname!');
-                if (args.length === 2) {
-                    let userID;
-                    switch (args[1]) {
-                        // case 'Karolina':
-                        //     userID = 0;
-                        //     break;
-                        case 'Ksawery':
-                            userID = auth.ksaweryID;
-                            break;
-                        case 'Kuba':
-                            userID = auth.kubaID;
-                            break;
-                        case 'Paweł':
-                            userID = auth.pawelID;
-                            break;
-                    }
-
-                    bot.guilds.cache.get(auth.serverID)?.members.fetch().then(member => console.log(member.toJSON()));
-
-                    // console.log(userID);
-                    // console.log("");
-                    // console.log(message.guild.members.resolve(String(userID)));
-                    // console.log("");
-                    // const list = message.client.guilds.cache.get(auth.serverID);
-                    // list.members.cache.forEach(member => console.log(member.user.username));
-                    // message.guild.fetchAllMembers
-
-                    // for (const guild of client.guilds.cache)
-                    //     for (const user of await guild.members.fetch())
-                    //         console.log(user);
-                    //         // user.send('message').catch(() => console.log('User had DMs disabled'));
-
-                    // message.guild.members.fetch(String(userID)).setNickname(args[0]);
-                    // let rMember = message.guild.member(await message.guild.members.fetch(userID));
-                    // console.log(rMember);
-                    // await rMember.setNickname(args[0]);
-                    // let guildMember = message.guild.members.fetch(String(userID));
-                    // console.log((await guildMember).setNickname(args[0]));
-                    // await message.guild.members.fetch(String(userID)).setNickname(args[0]);
-                    // await message.guild.members.fetch(String(userID)).then(member => { member.setNickname(args[0]).catch(error => message.channel.send("ok"));}).catch(error => message.channel.send('fetch error'));
-                    // message.guild.members.fetch().then(member => {
-                    //     console.log(member.user.id)
-                    //     if (member.user.id === (userID)) {
-                    //         console.log(member.user.id)
-                    //         member.setNickname(args[0])
-                    //     }
-                    // })
-                }
-                else {
-                    await message.member?.setNickname(args[0]);
-                }
-                break;
-            case 'whois': {
-                console.log(args);
-                break;
-            }
-            case 'book': {
-                await message.channel.send("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly);
-                break;
-            }
-            case 'cron': {
-                if (args[0] != 'start' && !(args[1] in crons)) {
-                    await message.channel.send('No such job as \"'+args[1]+'\"!')
-                }
-                switch(args[0]) {
-                    case 'start': {
-                        let cron_arg = args[2] + ' ' + args[3] + ' ' + args[4] + ' ' + args[5] + ' ' + args[6];
-                        crons[args[1]] = cron.schedule(cron_arg, () => {
-                            message.channel.send({ embeds: [new MessageEmbed().setTitle(args.slice(7).join(' '))] })
-                        }, {
-                            timezone: 'Europe/Warsaw',
-                            scheduled: false
-			            });
-                        crons[args[1]].start();
-                        break;
-                    }
-                    case 'kill':
-                        crons[args[1]].stop();
-                        delete(crons[args[1]]);
-			            break;
-                }
-                break;
-            }
             // case 'play': {
             //     await musicHandle.execute(message, serverQueue);
             //     break;
@@ -388,12 +408,12 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
             //     musicHandle.stop(message, serverQueue);
             //     break;
             // }
-            case 'queue':
-                const embedQueue = new MessageEmbed()
-                    .setTitle('Queue')
-                    .setDescription(serverQueue.songs)
-                await message.channel.send({ embeds: [embedQueue] })
-                break;
+            // case 'queue':
+            //     const embedQueue = new MessageEmbed()
+            //         .setTitle('Queue')
+            //         .setDescription(serverQueue.songs)
+            //     await message.channel.send({ embeds: [embedQueue] })
+            //     break;
         }
     }
     // the messages replies
@@ -401,13 +421,16 @@ bot.on('messageCreate', async (message: Message): Promise<void> => {
         args = message.content.substring(4).split(' ');
         await message.channel.send('Cześć '+args.join(' ')+'!')
     }
+    if (message.content.includes('awaj admina')) {
+        await message.channel.send('Nie')
+    }
     if (message.content.includes(':octopus:')) {
         await message.channel.send(':octopus:')
     }
     if (message.content.substring(1, 7) === 'estem ') {
         args = message.content.substring(7).split(' ');
         if (args[0].substring(1, 7) === "sawery" || args[0].substring(1, 5) === "dmin")
-            if (parseInt(message.author.id) !== auth.ksaweryID)
+            if (parseInt(message.author.id) !== auth.memberIDs["Ksawery"])
                 await message.channel.send('Witaj... Wait a minute, you are not Ksawery. You are not Ksawery at all!')
             else
                 await message.channel.send('Witaj Ksawery :smiley:')
