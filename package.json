@@ -1,6 +1,6 @@
 {
     "name": "circle-bot",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "The Circle Bot",
     "main": "bot.ts",
     "author": "Ksawery Chodyniecki",
@@ -20,7 +20,7 @@
         "libsodium-wrappers": "^0.7.9",
         "node-cron": "^3.0.0",
         "node-fetch": "^2.6.1",
-        "youtube-search": "^1.1.6",
+        "youtube-sr": "^4.1.8",
         "ytdl-core": "^4.9.1"
     },
     "devDependencies": {

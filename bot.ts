@@ -3,7 +3,7 @@ import ytdl from "ytdl-core";
 import got from 'got';
 import * as discordx from 'discordx';
 import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, joinVoiceChannel, PlayerSubscription, VoiceConnection } from '@discordjs/voice';
-import youtubeSearch from "youtube-search";
+import YouTube from "youtube-sr";
 import * as jsdom from "jsdom";
 import * as cron from 'node-cron';
 const { JSDOM } = jsdom;
@@ -20,10 +20,6 @@ const bot = new discordx.Client({ intents: [
 const url = 'http://www.holidayscalendar.com';
 // const url = 'https://www.checkiday.com';
 
-const youtubeOptions: youtubeSearch.YouTubeSearchOptions = {
-    maxResults: 2,
-    key: auth.googleKey
-}
 declare const queueConstruct: {
     textChannel: TextBasedChannels,
     voiceChannel: VoiceChannel | StageChannel,
@@ -359,16 +355,12 @@ abstract class MusicGroup {
         async function findSong(query: string): Promise<string> {
             // if an URL is not in query, search YouTube, find an URL and replace query with it
             if (!query.includes("youtube.com/")) {
-                let search: string = ''
-                await youtubeSearch(query, youtubeOptions, (error, results) => {
-                    if (error)
-                        return console.log(error);
-                    search = results![0].id;
-                });
-                return "https://youtube.com/watch?v=".concat(search);
+                let foo = await YouTube.searchOne(query)
+                return "https://youtube.com/watch?v=" + foo.id;
             }
-            else
+            else {
                 return query
+            }
         }
 
         const serverQueue = musicQueue.get(interaction.guildId!)
@@ -381,7 +373,8 @@ abstract class MusicGroup {
         if (!permissions!.has("CONNECT") || !permissions!.has("SPEAK"))
             interaction.reply("I need the permissions to join and speak in your voice channel");
 
-        let songInfo = await ytdl.getInfo(await findSong(query));
+        query = await findSong(query)
+        let songInfo = await ytdl.getInfo(query);
         const song = {
             title: songInfo.videoDetails.title,
             url: songInfo.videoDetails.video_url
@@ -407,13 +400,16 @@ abstract class MusicGroup {
             musicQueue.set(interaction.guildId!, serverQueue);
             try {
                 serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
-                serverQueue!.player.on(AudioPlayerStatus.Idle, () => {
+                serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
+                serverQueue.player.on(AudioPlayerStatus.Idle, () => {
                     console.log('ppp')
                     this.playNext(serverQueue!, interaction.guildId!)
                 })
+                interaction.reply(`${song.title} has been added to the queue`);
             } catch (error: any) {
                 console.log(error);
                 musicQueue.delete(interaction.guildId!);
+                interaction.reply(`An error has occurred: ${error}`);
             }
         } else {
             serverQueue.songs.push(song);
@@ -431,6 +427,7 @@ abstract class MusicGroup {
             interaction.reply("You need to be in a voice channel to skip music");
         
         this.playNext(serverQueue!, interaction.guildId!)
+        interaction.reply(`Skipped to the next song`);
     }
 
     @discordx.Slash('pause')
@@ -442,8 +439,13 @@ abstract class MusicGroup {
         if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
             interaction.reply("You need to be in a voice channel to pause music");
         
-        if (serverQueue!.player.state.status === AudioPlayerStatus.Playing)
+        if (serverQueue!.player.state.status === AudioPlayerStatus.Playing) {
             serverQueue!.player.pause();
+            interaction.reply(`Paused`);
+        }
+        else {
+            interaction.reply(`Can't pause if music is not playing`);
+        }
     }
 
     @discordx.Slash('unpause')
@@ -455,8 +457,13 @@ abstract class MusicGroup {
         if (!interaction.guild!.members.cache.get(interaction.member!.user.id)!.voice.channel)
             interaction.reply("You need to be in a voice channel to unpause music");
         
-        if (serverQueue!.player.state.status === AudioPlayerStatus.Paused)
+        if (serverQueue!.player.state.status === AudioPlayerStatus.Paused) {
             serverQueue!.player.unpause();
+            interaction.reply(`Unpaused`);
+        }
+        else {
+            interaction.reply(`Can't unpause if music nothing is paused`);
+        }
     }
 
     @discordx.Slash('stop')
@@ -469,6 +476,7 @@ abstract class MusicGroup {
             interaction.reply("You need to be in a voice channel to stop music");
 
         this.destroy(serverQueue!, interaction.guildId!);
+        interaction.reply("Stopped playing, bye!");
     }
 
     @discordx.Slash('queue')
@@ -480,7 +488,7 @@ abstract class MusicGroup {
 
         const embedQueue = new MessageEmbed()
             .setTitle('Queue')
-            .setDescription(serverQueue!.songs.join(' '))
+            .setDescription(serverQueue!.songs.map((value: { title: string, url: string} ) => { return value.title }).join('\n'))
         interaction.reply({ embeds: [embedQueue] })
     }
 }
