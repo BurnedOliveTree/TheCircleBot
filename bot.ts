@@ -1,8 +1,8 @@
-import { CommandInteraction, Guild, GuildMember, Intents, Message, MessageEmbed, Role, StageChannel, TextBasedChannels, User, VoiceChannel } from 'discord.js';
+import { CommandInteraction, GuildMember, Intents, Message, MessageEmbed, Role, StageChannel, TextBasedChannels, User, VoiceChannel } from 'discord.js';
+import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, entersState, joinVoiceChannel, PlayerSubscription, VoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
+import * as discordx from 'discordx';
 import ytdl from "ytdl-core";
 import got from 'got';
-import * as discordx from 'discordx';
-import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, joinVoiceChannel, PlayerSubscription, VoiceConnection } from '@discordjs/voice';
 import YouTube from "youtube-sr";
 import * as jsdom from "jsdom";
 import * as cron from 'node-cron';
@@ -27,8 +27,7 @@ declare const queueConstruct: {
     connection: VoiceConnection,
     subscription: PlayerSubscription | null | undefined,
     songs: Array<{title: string, url: string}>,
-    volume: number,
-    playing: boolean
+    volume: number
 }
 type QueueConstruct = typeof queueConstruct
 const musicQueue = new Map<string, QueueConstruct>();
@@ -69,28 +68,7 @@ const NotBot: discordx.GuardFunction<discordx.ArgsOf<"messageCreate">> = async (
 
 @discordx.Discord()
 abstract class TheCircleBot {
-    @discordx.Slash('help')
-    private help(interaction: CommandInteraction) {
-        const embedHelp = new MessageEmbed()
-            .setTitle('Help')
-            .setDescription('Cześć wszystkim! Jestem TheCircleBot, nasz kółeczkowy bot. Na razie posiadam takie komendy (dostępne po znaku \'!\'):')
-            .addFields(
-                { name: 'help', value: 'Shows this embed message' },
-                { name: 'ping', value: 'Ping bot' },
-                { name: 'roll', value: 'Rolls dices: arguments should be structured like this: 2d10+3' },
-                { name: 'poll', value: 'Creates a poll with up to 26 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'' },
-                { name: 'holidays', value: "Shows today's international and weird holidays"},
-                { name: 'book', value: 'Sends the link to the ebook'},
-                { name: 'cron', value: 'set up or remove a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days'},
-                { name: 'play', value: 'Play a given video from YouTube. You can type in a link or its name'},
-                { name: 'skip', value: 'Skips to next song in queue'},
-                { name: 'queue', value: 'Lists all songs added to the queue'},
-                { name: 'stop', value: 'Stop playing music and leave the voice channel'}
-            )
-        interaction.reply({ embeds: [embedHelp] })
-    }
-
-    @discordx.Slash('ping')
+    @discordx.Slash('ping', { description: "Ping bot and check if it's up" })
     private ping(interaction: CommandInteraction) {
         interaction.reply("Pong!")
     }
@@ -103,7 +81,7 @@ abstract class TheCircleBot {
         interaction.reply(mentionable.id);
     }
 
-    @discordx.Slash('roll')
+    @discordx.Slash('roll', { description: "Roll the dices" })
     private roll(
         @discordx.SlashOption("sides", { description: "amount of sides on these dices", type: "INTEGER", required: true }) die_sides: number,
         @discordx.SlashOption("amount", { description: "amount of dices", type: "INTEGER" }) die_amount: number,
@@ -121,14 +99,27 @@ abstract class TheCircleBot {
         interaction.reply(results)
     }
 
-    @discordx.Slash('event')
+    @discordx.Slash('event', { description: "Create an event and vote whether you will participate or not" })
     private async event(
-        @discordx.SlashOption("name", { description: "name of the message", type: "STRING", required: true }) name: string,
+        @discordx.SlashOption("title", { description: "title of the event", type: "STRING", required: true }) title: string,
+        @discordx.SlashOption("description", { description: "description of the event", type: "STRING"}) description: string,
+        @discordx.SlashOption("date", { description: "date of the event, formatted like: YYYY-MM-DDTHH:MM", type: "STRING"}) date: string,
         interaction: CommandInteraction
     ) {
+        if (description === undefined)
+            description = ""
+        else
+            description = description + "\n\n"
+
+        if (date !== undefined) {
+            date = new Date(date + ":00").toString()
+        }
+        else
+            date = ""
         const embedEvent = new MessageEmbed()
-            .setTitle(name)
-            .setDescription("🟢 - tak\n🟡 - może\n🔴 - nie")
+            .setTitle(title)
+            .setDescription(description + "🟢 - yes\n🟡 - maybe\n🔴 - no")
+            .addField('Date', date)
         const message = await interaction.reply({ embeds: [embedEvent], fetchReply: true })
         if (!(message instanceof Message))
             throw TypeError
@@ -137,7 +128,7 @@ abstract class TheCircleBot {
         message.react("🔴")
     }
 
-    @discordx.Slash('poll')
+    @discordx.Slash('poll', { description: "Creates a poll with up to 20 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'" })
     private async poll(
         @discordx.SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
         interaction: CommandInteraction
@@ -159,7 +150,7 @@ abstract class TheCircleBot {
         }
     }
 
-    @discordx.Slash('holidays')
+    @discordx.Slash('holidays', { description: "Shows today's international and weird holidays" })
     private async holidays(interaction: CommandInteraction) {
         async function getHolidaysWrapper(url: string) {
             async function getHolidays(url: string) {
@@ -199,7 +190,7 @@ abstract class TheCircleBot {
     }
 
     @discordx.Guild(auth.serverID)
-    @discordx.Slash('book')
+    @discordx.Slash('book', { description: "Sends link to the ebooks" })
     private book(interaction: CommandInteraction) {
         interaction.reply("Link to Hacking 101: "+auth.hacking101+"\nLink to O'Reilly: "+auth.oreilly)
     }
@@ -288,7 +279,7 @@ abstract class TheCircleBot {
 @discordx.SlashGroup("cron", "cron commands group")
 abstract class CronGroup {
 
-    @discordx.Slash('start')
+    @discordx.Slash('start', { description: 'Set up a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days' })
     private start(
         @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         @discordx.SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
@@ -310,7 +301,7 @@ abstract class CronGroup {
         interaction.reply("Added new "+message+" cron")
     }
     
-    @discordx.Slash('kill')
+    @discordx.Slash('kill', { description: 'Remove a scheduled message' })
     private kill(
         @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         interaction: CommandInteraction
@@ -333,7 +324,6 @@ abstract class MusicGroup {
     private playNext(serverQueue: QueueConstruct, guildId: string) {
         serverQueue.songs.shift() // pop first element
         if (serverQueue.songs.length === 0) {
-            serverQueue.textChannel.send(`There are no more songs in the queue, bye!`);
             this.destroy(serverQueue, guildId);
         }
         serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
@@ -341,13 +331,14 @@ abstract class MusicGroup {
     }
 
     private destroy(serverQueue: QueueConstruct, guildId: string) {
+        serverQueue.textChannel.send(`Hear you next time! :D`);
         serverQueue.player.stop();
         serverQueue.subscription!.unsubscribe();
         serverQueue.connection.destroy();
         musicQueue.delete(guildId);
     }
 
-    @discordx.Slash('play')
+    @discordx.Slash('play', { description: 'Play a given video from YouTube. You can type in a link or its name' })
     private async play(
         @discordx.SlashOption("query", { description: "query to search for in YT", type: "STRING", required: true }) query: string,
         interaction: CommandInteraction
@@ -392,8 +383,7 @@ abstract class MusicGroup {
                 }),
                 subscription: null,
                 songs: [song],
-                volume: 5,
-                playing: true
+                volume: 5
             };
 
             serverQueue.subscription = serverQueue!.connection.subscribe(serverQueue!.player)
@@ -402,9 +392,22 @@ abstract class MusicGroup {
                 serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
                 serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
                 serverQueue.player.on(AudioPlayerStatus.Idle, () => {
-                    console.log('ppp')
-                    this.playNext(serverQueue!, interaction.guildId!)
+                    this.playNext(serverQueue, interaction.guildId!)
                 })
+                serverQueue.connection.on(VoiceConnectionStatus.Destroyed, () => {
+                    this.destroy(serverQueue, interaction.guildId!)
+                })
+                serverQueue.connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
+                    try {
+                        // check if after 5 seconds bot reconnects
+                        await Promise.race([
+                            entersState(serverQueue.connection, VoiceConnectionStatus.Signalling, 5_000),
+                            entersState(serverQueue.connection, VoiceConnectionStatus.Connecting, 5_000),
+                        ]);
+                    } catch (error) {
+                        this.destroy(serverQueue, interaction.guildId!)
+                    }
+                });
                 interaction.reply(`${song.title} has been added to the queue`);
             } catch (error: any) {
                 console.log(error);
@@ -417,7 +420,7 @@ abstract class MusicGroup {
         }
     }
 
-    @discordx.Slash('skip')
+    @discordx.Slash('skip', { description: 'Skips to next song in queue' })
     private skip(interaction: CommandInteraction) {
         const serverQueue = musicQueue.get(interaction.guildId!)
         if (!serverQueue)
@@ -466,7 +469,7 @@ abstract class MusicGroup {
         }
     }
 
-    @discordx.Slash('stop')
+    @discordx.Slash('stop', { description: 'Stop playing music and leave the voice channel' })
     private stop(interaction: CommandInteraction) {
         const serverQueue = musicQueue.get(interaction.guildId!)
         if (!serverQueue)
@@ -479,7 +482,7 @@ abstract class MusicGroup {
         interaction.reply("Stopped playing, bye!");
     }
 
-    @discordx.Slash('queue')
+    @discordx.Slash('queue', { description: 'Lists all songs added to the queue' })
     private queue(interaction: CommandInteraction) {
         const serverQueue = musicQueue.get(interaction.guildId!)
 
