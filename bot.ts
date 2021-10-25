@@ -128,7 +128,7 @@ abstract class TheCircleBot {
         message.react("🔴")
     }
 
-    @discordx.Slash('poll', { description: "Creates a poll with up to 20 answers: arguments should be structured like this: \'Question\' \'Answer A\' \'Answer B\'" })
+    @discordx.Slash('poll', { description: "Creates a poll with up to 20 answers: args should be structured like this: \'Question\' \'A\' \'B\'" })
     private async poll(
         @discordx.SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
         interaction: CommandInteraction
@@ -279,7 +279,7 @@ abstract class TheCircleBot {
 @discordx.SlashGroup("cron", "cron commands group")
 abstract class CronGroup {
 
-    @discordx.Slash('start', { description: 'Set up a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days' })
+    @discordx.Slash('start', { description: "Set up a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days" })
     private start(
         @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         @discordx.SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
@@ -301,7 +301,7 @@ abstract class CronGroup {
         interaction.reply("Added new "+message+" cron")
     }
     
-    @discordx.Slash('kill', { description: 'Remove a scheduled message' })
+    @discordx.Slash('kill', { description: "Remove a scheduled message" })
     private kill(
         @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         interaction: CommandInteraction
@@ -338,7 +338,7 @@ abstract class MusicGroup {
         musicQueue.delete(guildId);
     }
 
-    @discordx.Slash('play', { description: 'Play a given video from YouTube. You can type in a link or its name' })
+    @discordx.Slash('play', { description: "Play a given video from YouTube. You can type in a link or its name" })
     private async play(
         @discordx.SlashOption("query", { description: "query to search for in YT", type: "STRING", required: true }) query: string,
         interaction: CommandInteraction
@@ -469,7 +469,7 @@ abstract class MusicGroup {
         }
     }
 
-    @discordx.Slash('stop', { description: 'Stop playing music and leave the voice channel' })
+    @discordx.Slash('stop', { description: "Stop playing music and leave the voice channel" })
     private stop(interaction: CommandInteraction) {
         const serverQueue = musicQueue.get(interaction.guildId!)
         if (!serverQueue)
@@ -482,7 +482,7 @@ abstract class MusicGroup {
         interaction.reply("Stopped playing, bye!");
     }
 
-    @discordx.Slash('queue', { description: 'Lists all songs added to the queue' })
+    @discordx.Slash('queue', { description: "Lists all songs added to the queue" })
     private queue(interaction: CommandInteraction) {
         const serverQueue = musicQueue.get(interaction.guildId!)
 
