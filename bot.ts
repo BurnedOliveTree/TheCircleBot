@@ -276,10 +276,10 @@ abstract class TheCircleBot {
 }
 
 @discordx.Discord()
-@discordx.SlashGroup("cron", "cron commands group")
+@discordx.SlashGroup("cron", { description: "cron commands group"})
 abstract class CronGroup {
 
-    @discordx.Slash('start', { description: "Set up a scheduled message, example:\ncron start test 0 0 */14 * * This message will appear every 14 days" })
+    @discordx.Slash('start', { description: "Set up a scheduled message, example:\ncron start test 0 0 */14 * * Will appear every 14 days" })
     private start(
         @discordx.SlashOption("name", { description: "name of cron job", type: "STRING", required: true }) name: string,
         @discordx.SlashOption("message", { description: "message to send while schedule appears", type: "STRING", required: true  }) message: string,
