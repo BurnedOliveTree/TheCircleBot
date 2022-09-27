@@ -301,6 +301,13 @@ abstract class CronGroup {
         crons[name].start();
         interaction.reply("Added new "+message+" cron")
     }
+
+    @discordx.Slash('list', { description: "List all scheduled messages" })
+    private list(
+        interaction: CommandInteraction
+    ) {
+        interaction.reply(Object.keys(crons).join('\n'))
+    }
     
     @discordx.Slash('kill', { description: "Remove a scheduled message" })
     private kill(
@@ -326,9 +333,10 @@ abstract class MusicGroup {
         serverQueue.songs.shift() // pop first element
         if (serverQueue.songs.length === 0) {
             this.destroy(serverQueue, guildId);
+        } else {
+            serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly", requestOptions: { headers: { cookie: auth.cookie }} })));
+            serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
         }
-        serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
-        serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
     }
 
     private destroy(serverQueue: QueueConstruct, guildId: string) {
@@ -378,7 +386,7 @@ abstract class MusicGroup {
         }
         let songInfo: ytdl.videoInfo
         try {
-            songInfo = await ytdl.getInfo(query);
+            songInfo = await ytdl.getInfo(query, { requestOptions: { headers: { cookie: auth.cookie }}});
         } catch (error: any) {
             interaction.reply(`Requested song is probably age restricted on youtube`);
             return;
@@ -406,7 +414,7 @@ abstract class MusicGroup {
             serverQueue.subscription = serverQueue!.connection.subscribe(serverQueue!.player)
             musicQueue.set(interaction.guildId!, serverQueue);
             try {
-                serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { quality: "highestaudio" })));
+                serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { quality: "highestaudio", requestOptions: { headers: { cookie: auth.cookie }}})));
                 serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
                 serverQueue.player.on(AudioPlayerStatus.Idle, () => {
                     this.playNext(serverQueue, interaction.guildId!)
