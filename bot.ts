@@ -128,25 +128,26 @@ abstract class TheCircleBot {
         message.react("🔴")
     }
 
-    @discordx.Slash('poll', { description: "Creates a poll with up to 20 answers: args should be structured like this: \'Question\' \'A\' \'B\'" })
+    @discordx.Slash('poll', { description: "Creates a poll with up to 20 answers" })
     private async poll(
-        @discordx.SlashOption("args", { description: "poll options", type: "STRING", required: true }) args: string,
+        @discordx.SlashOption("title", { description: "polls title", type: "STRING", required: true }) title: string,
+        @discordx.SlashOption("options", { description: "poll options, structured like this: A, B, C", type: "STRING", required: true }) args: string,
         interaction: CommandInteraction
     ) {
-        const options = args.split('\'').filter((i: string) => i !== ' ').filter((i: string) => i);
+        const options = args.split(', ').filter((i: string) => i !== ' ').filter((i: string) => i);
         var result = '';
-        for (var i = 1; i < options.length; ++i) {
-            result = result + stupid_not_working_emojis[i - 1] + ' ' + options[i] + '\n';
+        for (var i = 0; i < options.length; ++i) {
+            result = result + stupid_not_working_emojis[i] + ' ' + options[i] + '\n';
         }
         const embedPoll = new MessageEmbed()
-            .setTitle(options[0])
+            .setTitle(title)
             .setDescription(result)
 
         const message = await interaction.reply({ embeds: [embedPoll], fetchReply: true })
         if (!(message instanceof Message))
             throw TypeError
-        for (var i = 1; i < options.length; ++i) {
-            message.react(stupid_not_working_emojis[i - 1])
+        for (var i = 0; i < options.length; ++i) {
+            message.react(stupid_not_working_emojis[i])
         }
     }
 
@@ -331,10 +332,12 @@ abstract class MusicGroup {
     }
 
     private destroy(serverQueue: QueueConstruct, guildId: string) {
-        serverQueue.textChannel.send(`Hear you next time! :D`);
         serverQueue.player.stop();
         serverQueue.subscription!.unsubscribe();
-        serverQueue.connection.destroy();
+        serverQueue.connection.disconnect();
+        if (serverQueue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+            serverQueue.connection.destroy();
+        }
         musicQueue.delete(guildId);
     }
 
@@ -347,7 +350,11 @@ abstract class MusicGroup {
             // if an URL is not in query, search YouTube, find an URL and replace query with it
             if (!query.includes("youtube.com/")) {
                 let foo = await YouTube.searchOne(query)
-                return "https://youtube.com/watch?v=" + foo.id;
+                if (foo === null) {
+                    return ""
+                } else {
+                    return "https://youtube.com/watch?v=" + foo.id
+                }
             }
             else {
                 return query
@@ -365,7 +372,17 @@ abstract class MusicGroup {
             interaction.reply("I need the permissions to join and speak in your voice channel");
 
         query = await findSong(query)
-        let songInfo = await ytdl.getInfo(query);
+        if (query === "") {
+            interaction.reply(`Requested song was not found on youtube`);
+            return;
+        }
+        let songInfo: ytdl.videoInfo
+        try {
+            songInfo = await ytdl.getInfo(query);
+        } catch (error: any) {
+            interaction.reply(`Requested song is probably age restricted on youtube`);
+            return;
+        }
         const song = {
             title: songInfo.videoDetails.title,
             url: songInfo.videoDetails.video_url
@@ -389,7 +406,7 @@ abstract class MusicGroup {
             serverQueue.subscription = serverQueue!.connection.subscribe(serverQueue!.player)
             musicQueue.set(interaction.guildId!, serverQueue);
             try {
-                serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { filter: "audioonly" })));
+                serverQueue.player.play(createAudioResource(ytdl(serverQueue.songs[0].url, { quality: "highestaudio" })));
                 serverQueue.textChannel.send(`Playing now **${serverQueue.songs[0].title}**`);
                 serverQueue.player.on(AudioPlayerStatus.Idle, () => {
                     this.playNext(serverQueue, interaction.guildId!)
@@ -501,7 +518,7 @@ bot.once('ready', async () => {
     await bot.initApplicationPermissions();
     console.log('bot is online');
     bot.user?.setStatus('online');
-    bot.user?.setActivity({ name: '!help', type: 'WATCHING' });
+    bot.user?.setActivity({ name: 'ciebie', type: 'WATCHING' });
 });
 
 bot.on("interactionCreate", (interaction) => {
